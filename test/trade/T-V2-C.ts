@@ -23,7 +23,7 @@ import {
 } from "./helpers/helpers";
 import { TradeState } from "./enums/trade-status.enum";
 
-describe.only("T-V2-C: OnTradeExchange - Varying scenarios (no partial execution, with pre-funding, no fees, auto-execute)", function () {
+describe("T-V2-C: OnTradeExchange - Varying scenarios (no partial execution, with pre-funding, no fees, auto-execute)", function () {
     let superAdmin: SignerWithAddress;
     let governor: SignerWithAddress;
     let manager: SignerWithAddress;

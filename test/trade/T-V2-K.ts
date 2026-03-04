@@ -23,7 +23,7 @@ import {
 } from "./helpers/helpers";
 import { TradeState } from "./enums/trade-status.enum";
 
-describe.only("T-V2-K: OnTradeExchange - Single Trade Execution (partial execution)", function () {
+describe("T-V2-K: OnTradeExchange - Single Trade Execution (partial execution)", function () {
     let superAdmin: SignerWithAddress;
     let governor: SignerWithAddress;
     let manager: SignerWithAddress;

@@ -164,6 +164,11 @@ describe("SegregatedTreasury – Owner / Admin Functions", function () {
                         .withdraw(BigNumber.from(1))
                 ).to.be.revertedWith("NotOwner()");
             });
+            it("should revert if amount is zero", async function () {
+                await expect(
+                    segregatedTreasury.connect(owner).withdraw(BigNumber.from(0))
+                ).to.be.revertedWith("ZeroAmount()");
+            });
             it("should revert if insufficient treasury balance", async function () {
                 await expect(
                     segregatedTreasury
