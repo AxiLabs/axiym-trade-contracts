@@ -8,7 +8,7 @@ import { OnTradeProtocolFactory } from "./factories/on-trade-protocol.factory";
 import { BigNumber } from "ethers";
 import { USD } from "../common/constants.factory";
 
-describe.only("SegregatedTreasury – Owner / Admin Functions", function () {
+describe("SegregatedTreasury – Owner / Admin Functions", function () {
     let superAdmin: SignerWithAddress;
     let governor: SignerWithAddress;
     let manager: SignerWithAddress;

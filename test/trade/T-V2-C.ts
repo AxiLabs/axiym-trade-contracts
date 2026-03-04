@@ -23,7 +23,7 @@ import {
 } from "./helpers/helpers";
 import { TradeState } from "./enums/trade-status.enum";
 
-describe("T-V2-C: OnTradeExchange - Varying scenarios (no partial execution, with pre-funding, no fees, auto-execute)", function () {
+describe.only("T-V2-C: OnTradeExchange - Varying scenarios (no partial execution, with pre-funding, no fees, auto-execute)", function () {
     let superAdmin: SignerWithAddress;
     let governor: SignerWithAddress;
     let manager: SignerWithAddress;
@@ -137,6 +137,7 @@ describe("T-V2-C: OnTradeExchange - Varying scenarios (no partial execution, wit
                 relay, // relay address
                 timestampPrior + 86400
             );
+
             // Day 1: mint and on-trade 100
             await mintAndOnTradeAtTime(
                 signer1,

@@ -14,7 +14,7 @@ interface ISegregatedTreasury {
 
     function setReceiveAddress(address) external;
 
-    function executeTrade(uint256, uint256) external;
+    function executeTrade(uint256, uint256, uint256) external;
 
     function version() external view returns (ContractVersion);
 

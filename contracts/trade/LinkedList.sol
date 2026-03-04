@@ -147,7 +147,7 @@ abstract contract LinkedList {
         uint256 _existingTrade,
         uint256 _newTrade,
         bool _direction
-    ) internal virtual returns (bool) {
+    ) internal returns (bool) {
         if (tradeExists(_existingTrade) && !tradeExists(_newTrade)) {
             uint256 temp = trades[_existingTrade][_direction];
             _linkTrades(_existingTrade, _newTrade, _direction);
@@ -226,7 +226,7 @@ abstract contract LinkedList {
     /// @notice Removes a specific trade from the list.
     /// @param _trade The trade ID to remove.
     /// @return The removed trade ID, or 0 if not found.
-    function _remove(uint256 _trade) internal virtual returns (uint256) {
+    function _remove(uint256 _trade) internal returns (uint256) {
         if (_trade == NULL || !tradeExists(_trade)) {
             return 0;
         }
@@ -305,7 +305,7 @@ abstract contract LinkedList {
         uint256 _existingTrade,
         uint256 _adjacentTrade,
         bool _direction
-    ) internal virtual {
+    ) internal {
         trades[_adjacentTrade][!_direction] = _existingTrade;
         trades[_existingTrade][_direction] = _adjacentTrade;
     }

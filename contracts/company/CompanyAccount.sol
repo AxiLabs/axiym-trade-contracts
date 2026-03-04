@@ -140,36 +140,58 @@ contract CompanyAccount is Governable, ReentrancyGuard {
     /// @notice Authorizes a specific operation.
     function _authorizeOperation(
         address liquidityAsset_,
-        address address_,
+        address target_,
         uint256 amount_,
+        bytes16 id_,
         bytes16 nonce_,
         bytes memory signature_
     ) private {
+        if (_nonces[nonce_]) revert InvalidAccountNonce();
+
         address signer = _recoverSigner(
             liquidityAsset_,
-            address_,
+            target_,
             amount_,
+            id_,
             nonce_,
             signature_
         );
+
         if (!_signers[signer]) revert Unauthorized();
-        if (_nonces[nonce_]) revert InvalidAccountNonce();
+
         _nonces[nonce_] = true;
 
-        emit OperationAuthorized(signer, address_, amount_, nonce_);
+        emit OperationAuthorized(signer, target_, amount_, nonce_);
     }
 
     /// @notice Recovers signer from parameters
     function _recoverSigner(
         address liquidityAsset_,
-        address address_,
+        address target_,
         uint256 amount_,
+        bytes16 id_,
         bytes16 nonce_,
         bytes memory signature_
-    ) private pure returns (address) {
+    ) private view returns (address) {
+        uint256 chainId;
+        assembly {
+            chainId := chainid()
+        }
+
         bytes32 messageHash = MessageHashUtils.toEthSignedMessageHash(
-            keccak256(abi.encodePacked(liquidityAsset_, address_, amount_, nonce_))
+            keccak256(
+                abi.encodePacked(
+                    liquidityAsset_,
+                    target_,
+                    amount_,
+                    id_,
+                    nonce_,
+                    address(this),
+                    chainId
+                )
+            )
         );
+
         return ECDSA.recover(messageHash, signature_);
     }
 
@@ -189,7 +211,14 @@ contract CompanyAccount is Governable, ReentrancyGuard {
         if (receiver_ == address(0)) revert AddressEmpty();
         if (_receivers[receiver_]) revert AddressExists();
 
-        _authorizeOperation(address(0), receiver_, 0, nonce_, signature_);
+        _authorizeOperation(
+            address(0),
+            receiver_,
+            0,
+            bytes16(0),
+            nonce_,
+            signature_
+        );
 
         _receivers[receiver_] = true;
         _receiverByIndex[_receiverCount] = receiver_;
@@ -213,12 +242,14 @@ contract CompanyAccount is Governable, ReentrancyGuard {
     /// @param liquidityAsset_ The address of the ERC20 liquidity asset to withdraw.
     /// @param receiver_ The address of the receiver (must be an approved receiver).
     /// @param amount_ The amount of the asset to withdraw.
+    /// @param id_ Unique Id
     /// @param nonce_ A unique nonce to prevent replay attacks.
     /// @param signature_ The ECDSA signature from an approved signer authorizing the withdrawal.
     function withdraw(
         address liquidityAsset_,
         address receiver_,
         uint256 amount_,
+        bytes16 id_,
         bytes16 nonce_,
         bytes memory signature_
     ) external notPaused nonReentrant {
@@ -227,7 +258,14 @@ contract CompanyAccount is Governable, ReentrancyGuard {
 
         if (!_receivers[receiver_]) revert InvalidReceiver();
 
-        _authorizeOperation(liquidityAsset_, receiver_, amount_, nonce_, signature_);
+        _authorizeOperation(
+            liquidityAsset_,
+            receiver_,
+            amount_,
+            id_,
+            nonce_,
+            signature_
+        );
 
         IERC20(liquidityAsset_).safeTransfer(receiver_, amount_);
 
@@ -294,11 +332,13 @@ contract CompanyAccount is Governable, ReentrancyGuard {
     /// @notice Called by approved spending contracts to request an ERC20 approval
     /// @param liquidityAsset_ The token/asset address
     /// @param amount_ Amount to approve
+    /// @param id_ Unique Id
     /// @param nonce_ A unique nonce
     /// @param signature_ Signature authorizing the operation
     function approveSpender(
         address liquidityAsset_,
         uint256 amount_,
+        bytes16 id_,
         bytes16 nonce_,
         bytes memory signature_
     ) external notPaused nonReentrant {
@@ -308,6 +348,7 @@ contract CompanyAccount is Governable, ReentrancyGuard {
             liquidityAsset_,
             msg.sender,
             amount_,
+            id_,
             nonce_,
             signature_
         );

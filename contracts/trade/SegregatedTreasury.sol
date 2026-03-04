@@ -132,6 +132,7 @@ contract SegregatedTreasury is
     /// @notice Withdraws on asset to registered receive address
     /// @param amount_ Amount to withdraw
     function withdraw(uint256 amount_) external onlyOwner nonReentrant {
+        if (amount_ == 0) revert ZeroAmount();
         if (_receiveAddress == address(0)) revert AddressEmpty();
 
         uint256 bal = _onAsset.balanceOf(address(this));
@@ -148,17 +149,14 @@ contract SegregatedTreasury is
     /// @notice Executes a trade by swapping offAsset for onAsset approval
     /// @dev Called by OnTradeExchange during trade execution
     /// @param tradeUint_ The trade ID to execute
-    /// @param amount_ The amount to swap
+    /// @param validatedPayoutSize_ Post-decrement currentPayoutSize
     function executeTrade(
         uint256 tradeUint_,
-        uint256 amount_
+        uint256 amount_,
+        uint256 validatedPayoutSize_
     ) external onlyOnTradeExchange whenNotPaused nonReentrant {
-        // verify trade exists and is in pending state, and amount not greater than registered payout
-        Trade memory trade = IOnTradeExchange(_onTradeExchange).getTradeData(
-            tradeUint_
-        );
-        if (trade.status != TradeState.Pending) revert InvalidPayoutStatus();
-        if (trade.currentPayoutSize < amount_) revert AmountExceedsCurrentPayout();
+        // validate amount against the already-decremented payout size passed in by exchange
+        if (validatedPayoutSize_ < amount_) revert AmountExceedsCurrentPayout();
 
         // Check enough USDT
         uint256 bal = _onAsset.balanceOf(address(this));

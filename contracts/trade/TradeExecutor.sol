@@ -3,14 +3,20 @@ pragma solidity 0.8.24;
 
 import {TradeQueue} from "./TradeQueue.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Governable} from "../governance/Governable.sol";
 import {Trade} from "./structs/Trade.sol";
 import {TradeState} from "../trade/enums/TradeState.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 /// @title TradeExecutor
 /// @notice Handles execution of queued trades with treasury interaction
-abstract contract TradeExecutor is TradeQueue, Governable, ReentrancyGuard {
+abstract contract TradeExecutor is TradeQueue, ReentrancyGuard, Pausable {
+    uint256 internal constant MIN_GAS_THRESHOLD = 50_000;
+    uint256 internal constant MAX_GAS_THRESHOLD = 10_000_000;
+
+    uint256 internal constant MIN_MAX_TRADES = 1;
+    uint256 internal constant MAX_MAX_TRADES = 1000;
+
     /// @notice The trade pool asset (internal currency, e.g. IUSD)
     IERC20 internal immutable _offAsset;
 
@@ -24,7 +30,7 @@ abstract contract TradeExecutor is TradeQueue, Governable, ReentrancyGuard {
     bool internal _partialExecution = false;
 
     /// @notice Maximum number of trades to execute in one queue run
-    uint256 internal _maxTrades;
+    uint256 internal _maxTrades = 50;
 
     /// @notice Gas threshold for stopping queue execution
     uint256 internal _gasThreshold = 150000;
@@ -33,8 +39,8 @@ abstract contract TradeExecutor is TradeQueue, Governable, ReentrancyGuard {
     event AutoExecutionSet(bool newAutoExecution);
     event PartialExecutionSet(bool newPartialExecution);
     event QueueExecuted(uint256 totalExecuted, uint256 remainingBalance);
-    event GasThresholdSet(uint256 gasThreshold);
-    event MaxTradesSet(uint256 maxTrades);
+    event GasThresholdSet(uint256 previousGasThreshold, uint256 newGasThreshold);
+    event MaxTradesSet(uint256 previousMaxTrades, uint256 newMaxTrades);
 
     // --- Constructor ---
     /// @param governance_ Governance address
@@ -46,7 +52,7 @@ abstract contract TradeExecutor is TradeQueue, Governable, ReentrancyGuard {
         address authRegistry_,
         address offAsset_,
         address onAsset_
-    ) TradeQueue(authRegistry_) Governable(governance_) {
+    ) TradeQueue(governance_, authRegistry_) {
         _offAsset = IERC20(offAsset_);
         _onAsset = IERC20(onAsset_);
     }
@@ -70,17 +76,29 @@ abstract contract TradeExecutor is TradeQueue, Governable, ReentrancyGuard {
     }
 
     /// @notice Set gas threshold for queue execution
+    /// @dev Must be between 50,000 and 10,000,000 to prevent queue lockout across all supported chains
     /// @param newGasThreshold_ Minimum gas remaining before stopping queue execution
     function setGasThreshold(uint256 newGasThreshold_) external onlyGovernor {
+        if (
+            newGasThreshold_ < MIN_GAS_THRESHOLD ||
+            newGasThreshold_ > MAX_GAS_THRESHOLD
+        ) revert InvalidGasThreshold();
+
+        uint256 previous = _gasThreshold;
         _gasThreshold = newGasThreshold_;
-        emit GasThresholdSet(newGasThreshold_);
+        emit GasThresholdSet(previous, newGasThreshold_);
     }
 
     /// @notice Set max trades to execute in one queue run
+    /// @dev Must be between 1 and 1000 to prevent queue lockout across all supported chains
     /// @param newMaxTrades_ Maximum number of trades to execute
     function setMaxTrades(uint256 newMaxTrades_) external onlyGovernor {
+        if (newMaxTrades_ < MIN_MAX_TRADES || newMaxTrades_ > MAX_MAX_TRADES)
+            revert InvalidMaxTrades();
+
+        uint256 previous = _maxTrades;
         _maxTrades = newMaxTrades_;
-        emit MaxTradesSet(newMaxTrades_);
+        emit MaxTradesSet(previous, newMaxTrades_);
     }
 
     // ════════════════════════════════════════════════════════════════════════════
@@ -88,7 +106,7 @@ abstract contract TradeExecutor is TradeQueue, Governable, ReentrancyGuard {
     // ════════════════════════════════════════════════════════════════════════════
 
     /// @notice Run execution engine
-    function executeQueue() external onlyAuthAddress nonReentrant {
+    function executeQueue() external onlyAuthAddress nonReentrant whenNotPaused {
         if (_partialExecution) {
             _runExecutionEngine(true);
         } else {
@@ -157,7 +175,7 @@ abstract contract TradeExecutor is TradeQueue, Governable, ReentrancyGuard {
     /// @param tradeId_ The trade ID
     function executeSingleTrade(
         uint256 tradeId_
-    ) external onlyAuthAddress nonReentrant {
+    ) external onlyAuthAddress nonReentrant whenNotPaused {
         Trade storage trade = _trades[tradeId_];
 
         _executeSingleTradeInternal(tradeId_, trade);
@@ -167,7 +185,7 @@ abstract contract TradeExecutor is TradeQueue, Governable, ReentrancyGuard {
     /// @param tradeBytes_ The trade bytes
     function executeSingleTradeBytes(
         bytes16 tradeBytes_
-    ) external onlyAuthAddress nonReentrant {
+    ) external onlyAuthAddress nonReentrant whenNotPaused {
         // decode the tradeId from bytes
         Trade storage trade = _trades[_tradesBytesToUint[tradeBytes_]];
 
