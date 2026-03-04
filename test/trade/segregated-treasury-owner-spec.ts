@@ -2,13 +2,18 @@ import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { ethers } from "hardhat";
 import { expect } from "chai";
 
-import { OnTradeExchange, SegregatedTreasury } from "../../typechain";
+import {
+    CompanyAccount,
+    OnTradeExchange,
+    SegregatedTreasury,
+} from "../../typechain";
 import { OnTradeProtocolFactory } from "./factories/on-trade-protocol.factory";
 
 import { BigNumber } from "ethers";
 import { USD } from "../common/constants.factory";
+import { CompanyAccountFactory } from "../company_account/factories/company-accounts.factory";
 
-describe("SegregatedTreasury – Owner / Admin Functions", function () {
+describe("SegregatedTreasury – Owner Functions", function () {
     let superAdmin: SignerWithAddress;
     let governor: SignerWithAddress;
     let manager: SignerWithAddress;
@@ -20,6 +25,7 @@ describe("SegregatedTreasury – Owner / Admin Functions", function () {
     let protocol: any;
     let onTradeExchange: OnTradeExchange;
     let segregatedTreasury: SegregatedTreasury;
+    let axiymFeeCompanyAccount: CompanyAccount;
 
     beforeEach(async function () {
         [superAdmin, governor, manager, authorizer, owner, relay, randomUser] =
@@ -37,6 +43,14 @@ describe("SegregatedTreasury – Owner / Admin Functions", function () {
         await OnTradeProtocolFactory.addIUSD(protocol, false);
         await OnTradeProtocolFactory.addUSDC(protocol, relay, false);
 
+        // create axiym fee company account
+        axiymFeeCompanyAccount = await CompanyAccountFactory.create(
+            superAdmin, // deployer
+            protocol.governance.address,
+            protocol.authRegistry.address,
+            randomUser.address
+        );
+
         await OnTradeProtocolFactory.createOnRamp(
             protocol,
             owner.address,
@@ -49,7 +63,6 @@ describe("SegregatedTreasury – Owner / Admin Functions", function () {
         onTradeExchange = protocol.onTradeExchanges[0];
         segregatedTreasury = protocol.segregatedTreasuries[0];
     });
-
     describe("pause", function () {
         context("failure cases", function () {
             it("should revert if called by non-owner", async function () {
@@ -65,7 +78,6 @@ describe("SegregatedTreasury – Owner / Admin Functions", function () {
             });
         });
     });
-
     describe("unpause", function () {
         beforeEach(async function () {
             await segregatedTreasury.connect(owner).pause();
@@ -84,7 +96,6 @@ describe("SegregatedTreasury – Owner / Admin Functions", function () {
             });
         });
     });
-
     describe("setOwner", function () {
         context("failure cases", function () {
             it("should revert if not called by owner", async function () {
