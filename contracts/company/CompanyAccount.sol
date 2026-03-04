@@ -140,7 +140,7 @@ contract CompanyAccount is Governable, ReentrancyGuard {
     /// @notice Authorizes a specific operation.
     function _authorizeOperation(
         address liquidityAsset_,
-        address target_,
+        address address_,
         uint256 amount_,
         bytes16 id_,
         bytes16 nonce_,
@@ -150,7 +150,7 @@ contract CompanyAccount is Governable, ReentrancyGuard {
 
         address signer = _recoverSigner(
             liquidityAsset_,
-            target_,
+            address_,
             amount_,
             id_,
             nonce_,
@@ -161,13 +161,13 @@ contract CompanyAccount is Governable, ReentrancyGuard {
 
         _nonces[nonce_] = true;
 
-        emit OperationAuthorized(signer, target_, amount_, nonce_);
+        emit OperationAuthorized(signer, address_, amount_, nonce_);
     }
 
     /// @notice Recovers signer from parameters
     function _recoverSigner(
         address liquidityAsset_,
-        address target_,
+        address address_,
         uint256 amount_,
         bytes16 id_,
         bytes16 nonce_,
@@ -182,7 +182,7 @@ contract CompanyAccount is Governable, ReentrancyGuard {
             keccak256(
                 abi.encodePacked(
                     liquidityAsset_,
-                    target_,
+                    address_,
                     amount_,
                     id_,
                     nonce_,
