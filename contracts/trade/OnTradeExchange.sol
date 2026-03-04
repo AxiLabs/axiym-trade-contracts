@@ -88,16 +88,12 @@ contract OnTradeExchange is TradeExecutor {
     /// @param authRegistry_ Address of the Auth Registry
     /// @param offAsset_ Address of the internal exchange asset (IUSD)
     /// @param onAsset_ Address of external asset (USDT)
-    /// @param companyAccounts_ List of company account addresses to register and activate
-    /// @param feeCompanyAccount_ Account to receive Axiym fees (in offAsset)
     constructor(
         address governance_,
         address owner_,
         address authRegistry_,
         address offAsset_,
-        address onAsset_,
-        address[] memory companyAccounts_,
-        address feeCompanyAccount_
+        address onAsset_
     ) TradeExecutor(governance_, authRegistry_, offAsset_, onAsset_) {
         if (offAsset_ == address(0) || onAsset_ == address(0)) revert AddressEmpty();
         if (offAsset_.code.length == 0 || onAsset_.code.length == 0)
@@ -108,9 +104,6 @@ contract OnTradeExchange is TradeExecutor {
         _segregatedTreasury = address(
             new SegregatedTreasury(address(this), owner_, offAsset_, onAsset_)
         );
-
-        // initialize fee account and company accounts
-        _setup(feeCompanyAccount_, companyAccounts_);
     }
 
     // ════════════════════════════════════════════════════════════════════════════
@@ -135,36 +128,6 @@ contract OnTradeExchange is TradeExecutor {
     function unpause() external onlyManager {
         _unpause();
         emit Unpaused(msg.sender);
-    }
-
-    // ════════════════════════════════════════════════════════════════════════════
-    // 🟦 Setup
-    // ════════════════════════════════════════════════════════════════════════════
-
-    /// @notice Internal setup function to initialize fee account and company accounts
-    /// @param feeCompanyAccount_ The address of the fee company account
-    /// @param companyAccounts_ List of company account addresses to register and activate
-    function _setup(
-        address feeCompanyAccount_,
-        address[] memory companyAccounts_
-    ) internal {
-        // setup fee company account
-        _feeCompanyAccount = feeCompanyAccount_;
-        emit FeeCompanyAccountUpdated(address(0), feeCompanyAccount_);
-
-        // setup company accounts
-        for (uint256 i = 0; i < companyAccounts_.length; i++) {
-            address companyAccount = companyAccounts_[i];
-            if (companyAccount == address(0) || _companyAccounts[companyAccount])
-                revert InvalidCompanyAccount();
-
-            _companyAccounts[companyAccount] = true;
-            _companyAccountsByIdx[i] = companyAccount;
-            _companyAccountStatuses[companyAccount] = CompanyAccountStatus.Active;
-            _companyAccountCount++;
-
-            emit CompanyAccountAdded(companyAccount);
-        }
     }
 
     // ════════════════════════════════════════════════════════════════════════════

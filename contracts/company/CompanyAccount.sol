@@ -20,7 +20,7 @@ contract CompanyAccount is Governable, ReentrancyGuard {
     ContractVersion public immutable version = ContractVersion.CompanyAccount;
 
     // --- State ---
-    address internal immutable _authRegistry;
+    address internal _authRegistry;
     bool internal _paused;
     mapping(bytes16 => bool) private _nonces;
 
@@ -70,6 +70,10 @@ contract CompanyAccount is Governable, ReentrancyGuard {
         uint256 amount,
         bytes16 nonce
     );
+    event AuthRegistryTransferred(
+        address indexed oldAuthRegistry,
+        address indexed newAuthRegistry
+    );
 
     // --- Modifiers ---
     modifier notPaused() {
@@ -109,6 +113,21 @@ contract CompanyAccount is Governable, ReentrancyGuard {
     function unpause() external onlyManager {
         _paused = false;
         emit Unpaused();
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // 🟦 Governance Functions
+    // ════════════════════════════════════════════════════════════════════════════
+    /// @notice Updates the AuthRegistry address
+    /// @param newAuthRegistry_ New AuthRegistry address
+    function setAuthRegistry(address newAuthRegistry_) external onlyGovernor {
+        if (newAuthRegistry_ == address(0)) revert AddressEmpty();
+        if (newAuthRegistry_ == _authRegistry) revert AddressExists();
+
+        address oldAuthRegistry = _authRegistry;
+        _authRegistry = newAuthRegistry_;
+
+        emit AuthRegistryTransferred(oldAuthRegistry, newAuthRegistry_);
     }
 
     // ════════════════════════════════════════════════════════════════════════════

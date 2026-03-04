@@ -5,6 +5,7 @@ import { OnTradeExchangeFactory } from "./on-trade-exchange.factory";
 import { SegregatedTreasuryFactory } from "./segregated-treasury.factory";
 import { GovernanceFactory } from "../../governance/factories/governance.factory";
 import { AuthRegistryFactory } from "../../auth_registry/factories/auth-registry.factory";
+import { ethers } from "hardhat";
 
 export class OnTradeProtocolFactory {
     static async create(
@@ -63,7 +64,7 @@ export class OnTradeProtocolFactory {
         offAssetAddress: string,
         onAssetAddress: string,
         companyAccounts: string[],
-        feecompanyAccountAddress: string,
+        feeCompanyAccountAddress: string,
         verbose?: boolean
     ): Promise<void> {
         const onTradeExchange = await OnTradeExchangeFactory.create(
@@ -71,11 +72,25 @@ export class OnTradeProtocolFactory {
             ownerAddress,
             protocol.authRegistry.address,
             offAssetAddress,
-            onAssetAddress,
-            companyAccounts,
-            feecompanyAccountAddress
+            onAssetAddress
         );
         verbose && console.log("OnTradeExchange created");
+
+        // set fee company account if provided
+        if (feeCompanyAccountAddress !== ethers.constants.AddressZero) {
+            await onTradeExchange
+                .connect(protocol.governor)
+                .setFeeCompanyAccount(feeCompanyAccountAddress);
+            verbose && console.log("fee company account set");
+        }
+
+        // add company accounts if provided
+        for (const companyAccount of companyAccounts) {
+            await onTradeExchange
+                .connect(protocol.authorizer)
+                .addCompanyAccount(companyAccount);
+            verbose && console.log(`company account ${companyAccount} added`);
+        }
 
         if (!protocol.onTradeExchanges) {
             protocol.onTradeExchanges = [];

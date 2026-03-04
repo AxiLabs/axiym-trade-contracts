@@ -84,6 +84,63 @@ describe("CompanyAccount Contract", function () {
             expect(await companyAccount.liquidityAssetCount()).to.equal(0);
         });
     });
+    describe("setAuthRegistry", function () {
+        context("success", function () {
+            it("should update authRegistry correctly", async function () {
+                const newAuthRegistry = await AuthRegistryFactory.create(
+                    governance.address
+                );
+                await companyAccount
+                    .connect(governor)
+                    .setAuthRegistry(newAuthRegistry.address);
+                expect(await companyAccount.authRegistry()).to.equal(
+                    newAuthRegistry.address
+                );
+            });
+
+            it("should emit AuthRegistryTransferred event", async function () {
+                const newAuthRegistry = await AuthRegistryFactory.create(
+                    governance.address
+                );
+                await expect(
+                    companyAccount
+                        .connect(governor)
+                        .setAuthRegistry(newAuthRegistry.address)
+                )
+                    .to.emit(companyAccount, "AuthRegistryTransferred")
+                    .withArgs(authRegistry.address, newAuthRegistry.address);
+            });
+        });
+
+        context("failures", function () {
+            it("should revert if called by non-governor", async function () {
+                const newAuthRegistry = await AuthRegistryFactory.create(
+                    governance.address
+                );
+                await expect(
+                    companyAccount
+                        .connect(manager)
+                        .setAuthRegistry(newAuthRegistry.address)
+                ).to.be.revertedWith("Unauthorized()");
+            });
+
+            it("should revert if new authRegistry is zero address", async function () {
+                await expect(
+                    companyAccount
+                        .connect(governor)
+                        .setAuthRegistry(ethers.constants.AddressZero)
+                ).to.be.revertedWith("AddressEmpty()");
+            });
+
+            it("should revert if new authRegistry is same as current", async function () {
+                await expect(
+                    companyAccount
+                        .connect(governor)
+                        .setAuthRegistry(authRegistry.address)
+                ).to.be.revertedWith("AddressExists()");
+            });
+        });
+    });
     describe("addSigner", function () {
         context("success", function () {
             it("should add a new signer", async function () {
