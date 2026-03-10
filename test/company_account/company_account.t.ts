@@ -19,7 +19,7 @@ import { USDCFactory } from "../currencies/factories/usdc.factory";
 import { CompanyAccountFactory } from "./factories/company-accounts.factory";
 import { SpenderFactory } from "./factories/spender.factory";
 
-describe.only("CompanyAccount Contract", function () {
+describe("CompanyAccount Contract", function () {
     let superAdmin: SignerWithAddress;
     let governor: SignerWithAddress;
     let manager: SignerWithAddress;
@@ -84,6 +84,63 @@ describe.only("CompanyAccount Contract", function () {
             expect(await companyAccount.liquidityAssetCount()).to.equal(0);
         });
     });
+    describe("setAuthRegistry", function () {
+        context("success", function () {
+            it("should update authRegistry correctly", async function () {
+                const newAuthRegistry = await AuthRegistryFactory.create(
+                    governance.address
+                );
+                await companyAccount
+                    .connect(governor)
+                    .setAuthRegistry(newAuthRegistry.address);
+                expect(await companyAccount.authRegistry()).to.equal(
+                    newAuthRegistry.address
+                );
+            });
+
+            it("should emit AuthRegistryTransferred event", async function () {
+                const newAuthRegistry = await AuthRegistryFactory.create(
+                    governance.address
+                );
+                await expect(
+                    companyAccount
+                        .connect(governor)
+                        .setAuthRegistry(newAuthRegistry.address)
+                )
+                    .to.emit(companyAccount, "AuthRegistryTransferred")
+                    .withArgs(authRegistry.address, newAuthRegistry.address);
+            });
+        });
+
+        context("failures", function () {
+            it("should revert if called by non-governor", async function () {
+                const newAuthRegistry = await AuthRegistryFactory.create(
+                    governance.address
+                );
+                await expect(
+                    companyAccount
+                        .connect(manager)
+                        .setAuthRegistry(newAuthRegistry.address)
+                ).to.be.revertedWith("Unauthorized()");
+            });
+
+            it("should revert if new authRegistry is zero address", async function () {
+                await expect(
+                    companyAccount
+                        .connect(governor)
+                        .setAuthRegistry(ethers.constants.AddressZero)
+                ).to.be.revertedWith("AddressEmpty()");
+            });
+
+            it("should revert if new authRegistry is same as current", async function () {
+                await expect(
+                    companyAccount
+                        .connect(governor)
+                        .setAuthRegistry(authRegistry.address)
+                ).to.be.revertedWith("AddressExists()");
+            });
+        });
+    });
     describe("addSigner", function () {
         context("success", function () {
             it("should add a new signer", async function () {
@@ -136,27 +193,51 @@ describe.only("CompanyAccount Contract", function () {
 
     describe("addReceiver", function () {
         const nonce = ethers.utils.hexlify(ethers.utils.randomBytes(16));
+        const operationId = ethers.utils.hexZeroPad("0x00", 16); // id_ = bytes16(0)
         let signature: string;
+
         beforeEach(async function () {
+            const chainId = (await ethers.provider.getNetwork()).chainId;
+
             const messageHash = ethers.utils.solidityKeccak256(
-                ["address", "address", "uint256", "bytes16"],
-                [ethers.constants.AddressZero, receiver1.address, 0, nonce]
+                [
+                    "address",
+                    "address",
+                    "uint256",
+                    "bytes16",
+                    "bytes16",
+                    "address",
+                    "uint256",
+                ],
+                [
+                    ethers.constants.AddressZero, // liquidityAsset_
+                    receiver1.address, // target_
+                    0, // amount_
+                    operationId, // id_
+                    nonce, // nonce_
+                    companyAccount.address, // address(this)
+                    chainId, // chainId
+                ]
             );
+
             signature = await signer1.signMessage(
                 ethers.utils.arrayify(messageHash)
             );
         });
+
         context("success", function () {
             it("should add a receiver", async function () {
                 await companyAccount
                     .connect(authorizer)
                     .addReceiver(receiver1.address, nonce, signature);
+
                 expect(
                     await companyAccount.isReceiver(receiver1.address)
                 ).to.be.true;
                 expect(await companyAccount.receiverCount()).to.equal(1);
             });
         });
+
         context("failures", function () {
             it("should revert if called with zero addresses", async function () {
                 await expect(
@@ -165,24 +246,45 @@ describe.only("CompanyAccount Contract", function () {
                         .addReceiver(ethers.constants.AddressZero, nonce, signature)
                 ).to.be.revertedWith("AddressEmpty()");
             });
+
             it("should revert if already a receiver", async function () {
                 await companyAccount
                     .connect(authorizer)
                     .addReceiver(receiver1.address, nonce, signature);
+
                 await expect(
                     companyAccount
                         .connect(authorizer)
                         .addReceiver(receiver1.address, nonce, signature)
                 ).to.be.revertedWith("AddressExists()");
             });
+
             it("should revert if signature invalid", async function () {
+                const chainId = (await ethers.provider.getNetwork()).chainId;
                 const messageHash2 = ethers.utils.solidityKeccak256(
-                    ["address", "address", "uint256", "bytes16"],
-                    [ethers.constants.AddressZero, receiver2.address, 0, nonce]
+                    [
+                        "address",
+                        "address",
+                        "uint256",
+                        "bytes16",
+                        "bytes16",
+                        "address",
+                        "uint256",
+                    ],
+                    [
+                        ethers.constants.AddressZero,
+                        receiver2.address,
+                        0,
+                        operationId,
+                        nonce,
+                        companyAccount.address,
+                        chainId,
+                    ]
                 );
                 const signature2 = await signer1.signMessage(
                     ethers.utils.arrayify(messageHash2)
                 );
+
                 await expect(
                     companyAccount
                         .connect(authorizer)
@@ -194,27 +296,55 @@ describe.only("CompanyAccount Contract", function () {
 
     describe("removeReceiver", function () {
         const nonce = ethers.utils.hexlify(ethers.utils.randomBytes(16));
+        const operationId = ethers.utils.hexZeroPad("0x00", 16); // id_ = bytes16(0)
         let signature: string;
+
         beforeEach(async function () {
+            const chainId = (await ethers.provider.getNetwork()).chainId;
+
             const messageHash = ethers.utils.solidityKeccak256(
-                ["address", "address", "uint256", "bytes16"],
-                [ethers.constants.AddressZero, receiver1.address, 0, nonce]
+                [
+                    "address",
+                    "address",
+                    "uint256",
+                    "bytes16",
+                    "bytes16",
+                    "address",
+                    "uint256",
+                ],
+                [
+                    ethers.constants.AddressZero, // liquidityAsset_
+                    receiver1.address, // target_
+                    0, // amount_
+                    operationId, // id_
+                    nonce, // nonce_
+                    companyAccount.address, // address(this)
+                    chainId, // chainId
+                ]
             );
+
             signature = await signer1.signMessage(
                 ethers.utils.arrayify(messageHash)
             );
+
+            // Add receiver using the new signature format
             await companyAccount
                 .connect(authorizer)
                 .addReceiver(receiver1.address, nonce, signature);
         });
+
         context("success", function () {
             it("should remove a receiver", async function () {
                 await companyAccount
                     .connect(governor)
                     .removeReceiver(receiver1.address);
-                expect(await companyAccount.isReceiver(usdc.address)).to.be.false;
+
+                expect(
+                    await companyAccount.isReceiver(receiver1.address)
+                ).to.be.false;
             });
         });
+
         context("failures", function () {
             it("should revert if receiver invalid", async function () {
                 await expect(
@@ -223,6 +353,7 @@ describe.only("CompanyAccount Contract", function () {
                         .removeReceiver(ethers.constants.AddressZero)
                 ).to.be.revertedWith("AddressEmpty()");
             });
+
             it("should revert if receiver does not exist", async function () {
                 await expect(
                     companyAccount
@@ -290,56 +421,86 @@ describe.only("CompanyAccount Contract", function () {
     });
 
     describe("approveSpender", function () {
-        const nonce = ethers.utils.hexlify(ethers.utils.randomBytes(16));
+        let nonce: string;
+        let tradeId: string;
         let signature: string;
+
         beforeEach(async function () {
+            // Add spender first
             await companyAccount
                 .connect(governor)
                 .addSpender(usdc.address, spender.address);
+
+            // Generate tradeId and nonce
+            tradeId = ethers.utils.hexlify(ethers.utils.randomBytes(16));
+            nonce = ethers.utils.hexlify(ethers.utils.randomBytes(16));
+
+            // Compute the message hash including companyAccount address and chainId
+            const chainId = (await ethers.provider.getNetwork()).chainId;
             const messageHash = ethers.utils.solidityKeccak256(
-                ["address", "address", "uint256", "bytes16"],
-                [usdc.address, spender.address, 100, nonce]
+                [
+                    "address",
+                    "address",
+                    "uint256",
+                    "bytes16",
+                    "bytes16",
+                    "address",
+                    "uint256",
+                ],
+                [
+                    usdc.address, // liquidityAsset
+                    spender.address, // target
+                    100, // amount
+                    tradeId, // tradeId
+                    nonce, // nonce
+                    companyAccount.address, // companyAccount
+                    chainId, // chainId
+                ]
             );
+
             signature = await signer1.signMessage(
                 ethers.utils.arrayify(messageHash)
             );
         });
+
         context("success", function () {
             it("spender can approve and transfer USDC", async function () {
-                // approve first
                 await spender.requestApprovalAndTransfer(
                     companyAccount.address,
                     100,
+                    tradeId,
                     nonce,
                     signature
                 );
+
                 expect(await usdc.balanceOf(spender.address)).to.equal(100);
             });
         });
+
         context("failures", function () {
             it("should revert if not authorized spender", async function () {
                 await expect(
                     companyAccount
                         .connect(signer2)
-                        .approveSpender(
-                            companyAccount.address,
-                            100,
-                            nonce,
-                            signature
-                        )
+                        .approveSpender(usdc.address, 100, tradeId, nonce, signature)
                 ).to.be.revertedWith("Unauthorized()");
             });
+
             it("should revert if nonce already used", async function () {
+                // First call works
                 await spender.requestApprovalAndTransfer(
                     companyAccount.address,
                     100,
+                    tradeId,
                     nonce,
                     signature
                 );
+
                 await expect(
                     spender.requestApprovalAndTransfer(
                         companyAccount.address,
                         100,
+                        tradeId,
                         nonce,
                         signature
                     )
@@ -350,16 +511,38 @@ describe.only("CompanyAccount Contract", function () {
 
     describe("withdraw", function () {
         const nonce = ethers.utils.hexlify(ethers.utils.randomBytes(16));
+        const operationId = ethers.utils.hexZeroPad("0x00", 16);
         let signature: string;
 
         beforeEach(async function () {
+            const chainId = (await ethers.provider.getNetwork()).chainId;
+
             const messageHash = ethers.utils.solidityKeccak256(
-                ["address", "address", "uint256", "bytes16"],
-                [ethers.constants.AddressZero, receiver1.address, 0, nonce]
+                [
+                    "address",
+                    "address",
+                    "uint256",
+                    "bytes16",
+                    "bytes16",
+                    "address",
+                    "uint256",
+                ],
+                [
+                    ethers.constants.AddressZero,
+                    receiver1.address,
+                    0,
+                    operationId,
+                    nonce,
+                    companyAccount.address,
+                    chainId,
+                ]
             );
+
             signature = await signer1.signMessage(
                 ethers.utils.arrayify(messageHash)
             );
+
+            // Add receiver1 before withdraw tests
             await companyAccount
                 .connect(authorizer)
                 .addReceiver(receiver1.address, nonce, signature);
@@ -368,27 +551,78 @@ describe.only("CompanyAccount Contract", function () {
         context("success", function () {
             it("receiver can withdraw tokens", async function () {
                 const nonce2 = ethers.utils.hexlify(ethers.utils.randomBytes(16));
+                const tradeId2 = ethers.utils.hexlify(ethers.utils.randomBytes(16));
+                const chainId = (await ethers.provider.getNetwork()).chainId;
+
                 const messageHash2 = ethers.utils.solidityKeccak256(
-                    ["address", "address", "uint256", "bytes16"],
-                    [usdc.address, receiver1.address, 100, nonce2]
+                    [
+                        "address",
+                        "address",
+                        "uint256",
+                        "bytes16",
+                        "bytes16",
+                        "address",
+                        "uint256",
+                    ],
+                    [
+                        usdc.address,
+                        receiver1.address,
+                        100,
+                        tradeId2,
+                        nonce2,
+                        companyAccount.address,
+                        chainId,
+                    ]
                 );
                 const signature2 = await signer1.signMessage(
                     ethers.utils.arrayify(messageHash2)
                 );
+
                 await companyAccount
                     .connect(relayWallet)
                     .withdraw(
                         usdc.address,
                         receiver1.address,
                         100,
+                        tradeId2,
                         nonce2,
                         signature2
                     );
+
                 expect(await usdc.balanceOf(receiver1.address)).to.equal(100);
             });
         });
+
         context("failures", function () {
             it("should revert if not authorized by registry", async function () {
+                const nonce3 = ethers.utils.hexlify(ethers.utils.randomBytes(16));
+                const tradeId3 = ethers.utils.hexlify(ethers.utils.randomBytes(16));
+                const chainId = (await ethers.provider.getNetwork()).chainId;
+
+                const badHash = ethers.utils.solidityKeccak256(
+                    [
+                        "address",
+                        "address",
+                        "uint256",
+                        "bytes16",
+                        "bytes16",
+                        "address",
+                        "uint256",
+                    ],
+                    [
+                        usdc.address,
+                        signer2.address,
+                        100,
+                        tradeId3,
+                        nonce3,
+                        companyAccount.address,
+                        chainId,
+                    ]
+                );
+                const badSignature = await signer1.signMessage(
+                    ethers.utils.arrayify(badHash)
+                );
+
                 await expect(
                     companyAccount
                         .connect(signer2)
@@ -396,12 +630,42 @@ describe.only("CompanyAccount Contract", function () {
                             usdc.address,
                             signer2.address,
                             100,
-                            nonce,
-                            signature
+                            tradeId3,
+                            nonce3,
+                            badSignature
                         )
                 ).to.be.revertedWith("Unauthorized()");
             });
+
             it("should revert if receiver invalid", async function () {
+                const nonce4 = ethers.utils.hexlify(ethers.utils.randomBytes(16));
+                const tradeId4 = ethers.utils.hexlify(ethers.utils.randomBytes(16));
+                const chainId = (await ethers.provider.getNetwork()).chainId;
+
+                const invalidReceiverHash = ethers.utils.solidityKeccak256(
+                    [
+                        "address",
+                        "address",
+                        "uint256",
+                        "bytes16",
+                        "bytes16",
+                        "address",
+                        "uint256",
+                    ],
+                    [
+                        usdc.address,
+                        ethers.constants.AddressZero,
+                        100,
+                        tradeId4,
+                        nonce4,
+                        companyAccount.address,
+                        chainId,
+                    ]
+                );
+                const invalidReceiverSig = await signer1.signMessage(
+                    ethers.utils.arrayify(invalidReceiverHash)
+                );
+
                 await expect(
                     companyAccount
                         .connect(relayWallet)
@@ -409,8 +673,9 @@ describe.only("CompanyAccount Contract", function () {
                             usdc.address,
                             ethers.constants.AddressZero,
                             100,
-                            nonce,
-                            signature
+                            tradeId4,
+                            nonce4,
+                            invalidReceiverSig
                         )
                 ).to.be.revertedWith("InvalidReceiver()");
             });

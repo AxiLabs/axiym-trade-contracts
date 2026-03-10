@@ -17,17 +17,26 @@ describe("Auth Registry Contract", function () {
     let superAdmin: SignerWithAddress;
     let governor: SignerWithAddress;
     let manager: SignerWithAddress;
+    let authorizer: SignerWithAddress;
     let relayWallet: SignerWithAddress;
     let relayWallet2: SignerWithAddress;
 
     beforeEach(async function () {
-        [superAdmin, governor, manager, random, relayWallet, relayWallet2] =
-            await ethers.getSigners();
+        [
+            superAdmin,
+            governor,
+            manager,
+            authorizer,
+            random,
+            relayWallet,
+            relayWallet2,
+        ] = await ethers.getSigners();
 
         governance = await GovernanceFactory.create(
             superAdmin.address,
             governor.address,
-            manager.address
+            manager.address,
+            authorizer.address
         );
 
         authRegistry = await AuthRegistryFactory.create(governance.address);

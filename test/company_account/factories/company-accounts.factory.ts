@@ -41,13 +41,31 @@ export class CompanyAccountFactory {
             }
         }
 
-        // Add receivers (onlyAuthorizer + signer signature)
+        const chainId = (await ethers.provider.getNetwork()).chainId;
+        const operationId = ethers.utils.hexZeroPad("0x00", 16);
+
         for (const receiver of receivers) {
             const nonce = `0x${randomBytes(16).toString("hex")}`;
 
             const messageHash = ethers.utils.solidityKeccak256(
-                ["address", "address", "uint256", "bytes16"],
-                [ethers.constants.AddressZero, receiver, 0, nonce]
+                [
+                    "address",
+                    "address",
+                    "uint256",
+                    "bytes16",
+                    "bytes16",
+                    "address",
+                    "uint256",
+                ],
+                [
+                    ethers.constants.AddressZero,
+                    receiver,
+                    0,
+                    operationId,
+                    nonce,
+                    companyAccount.address,
+                    chainId,
+                ]
             );
             const signature = await signer.signMessage(
                 ethers.utils.arrayify(messageHash)

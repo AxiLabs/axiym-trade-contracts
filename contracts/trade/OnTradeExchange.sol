@@ -2,7 +2,6 @@
 pragma solidity 0.8.24;
 
 import {TradeExecutor} from "./TradeExecutor.sol";
-import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ContractVersion} from "../enums/ContractVersion.sol";
 import {CompanyAccountStatus} from "../enums/CompanyAccountStatus.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -16,7 +15,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 /// @title OnTradeExchange
 /// @notice Implements exchange functionality between an OnTradeExchange and a SegregatedTreasury
 /// @dev Orchestrates trade creation, fee collection, and company account management
-contract OnTradeExchange is TradeExecutor, Pausable {
+contract OnTradeExchange is TradeExecutor {
     using SafeERC20 for IERC20;
 
     ContractVersion public immutable version = ContractVersion.OnTradeExchange;
@@ -40,6 +39,12 @@ contract OnTradeExchange is TradeExecutor, Pausable {
     /// @notice Segregated Treasury address
     address internal immutable _segregatedTreasury;
 
+    /// @notice Nonce tracking mapping
+    mapping(bytes16 => bool) private _usedNonces;
+
+    /// @notice Minimum Trade Size
+    uint256 internal _minTradeAmount;
+
     // --- Events ---
     event FeeCompanyAccountUpdated(
         address indexed previousFeeAccount,
@@ -59,6 +64,7 @@ contract OnTradeExchange is TradeExecutor, Pausable {
         uint256 providerFee,
         uint256 timestamp
     );
+    event MinTradeAmountSet(uint256 previousAmount, uint256 newAmount);
 
     // --- Modifiers ---
     /// @notice Ensures company account exists and is active
@@ -82,29 +88,35 @@ contract OnTradeExchange is TradeExecutor, Pausable {
     /// @param authRegistry_ Address of the Auth Registry
     /// @param offAsset_ Address of the internal exchange asset (IUSD)
     /// @param onAsset_ Address of external asset (USDT)
-    /// @param companyAccounts_ List of company account addresses to register and activate
-    /// @param feeCompanyAccount_ Account to receive Axiym fees (in offAsset)
     constructor(
         address governance_,
         address owner_,
         address authRegistry_,
         address offAsset_,
-        address onAsset_,
-        address[] memory companyAccounts_,
-        address feeCompanyAccount_
+        address onAsset_
     ) TradeExecutor(governance_, authRegistry_, offAsset_, onAsset_) {
+        if (offAsset_ == address(0) || onAsset_ == address(0)) revert AddressEmpty();
+        if (offAsset_.code.length == 0 || onAsset_.code.length == 0)
+            revert NotContract();
+        if (offAsset_ == onAsset_) revert AssetsIdentical();
+
         // create a new SegregatedTreasury
         _segregatedTreasury = address(
             new SegregatedTreasury(address(this), owner_, offAsset_, onAsset_)
         );
-
-        // initialize fee account and company accounts
-        _setup(feeCompanyAccount_, companyAccounts_);
     }
 
     // ════════════════════════════════════════════════════════════════════════════
-    // 🟦 Pause Controls
+    // 🟦 Governor / Manager Functions
     // ════════════════════════════════════════════════════════════════════════════
+
+    /// @notice Sets the minimum trade amount
+    /// @param minTradeAmount_ New minimum trade amount in offAsset units
+    function setMinTradeAmount(uint256 minTradeAmount_) external onlyGovernor {
+        uint256 previous = _minTradeAmount;
+        _minTradeAmount = minTradeAmount_;
+        emit MinTradeAmountSet(previous, minTradeAmount_);
+    }
 
     /// @notice Pauses the contract
     function pause() external onlyManager {
@@ -119,42 +131,15 @@ contract OnTradeExchange is TradeExecutor, Pausable {
     }
 
     // ════════════════════════════════════════════════════════════════════════════
-    // 🟦 Setup
-    // ════════════════════════════════════════════════════════════════════════════
-
-    /// @notice Internal setup function to initialize fee account and company accounts
-    /// @param feeCompanyAccount_ The address of the fee company account
-    /// @param companyAccounts_ List of company account addresses to register and activate
-    function _setup(
-        address feeCompanyAccount_,
-        address[] memory companyAccounts_
-    ) internal {
-        // setup fee company account
-        _feeCompanyAccount = feeCompanyAccount_;
-        emit FeeCompanyAccountUpdated(address(0), feeCompanyAccount_);
-
-        // setup company accounts
-        for (uint256 i = 0; i < companyAccounts_.length; i++) {
-            address companyAccount = companyAccounts_[i];
-            if (companyAccount == address(0)) revert InvalidCompanyAccount();
-
-            _companyAccounts[companyAccount] = true;
-            _companyAccountsByIdx[i] = companyAccount;
-            _companyAccountStatuses[companyAccount] = CompanyAccountStatus.Active;
-            _companyAccountCount++;
-
-            emit CompanyAccountAdded(companyAccount);
-        }
-    }
-
-    // ════════════════════════════════════════════════════════════════════════════
     // 🟦 Company Account Management
     // ════════════════════════════════════════════════════════════════════════════
 
     /// @notice Adds a new company account and sets its status to Active
     /// @param companyAccount_ Address of the company account to add
     function addCompanyAccount(address companyAccount_) external onlyAuthorizer {
-        if (_companyAccounts[companyAccount_]) revert InvalidCompanyAccount();
+        if (_companyAccounts[companyAccount_] || companyAccount_ == address(0))
+            revert InvalidCompanyAccount();
+
         _companyAccounts[companyAccount_] = true;
         _companyAccountsByIdx[_companyAccountCount] = companyAccount_;
         _companyAccountStatuses[companyAccount_] = CompanyAccountStatus.Active;
@@ -193,8 +178,10 @@ contract OnTradeExchange is TradeExecutor, Pausable {
     /// @notice Sets the Axiym fee company account (where IUSD fees are sent)
     /// @param feeCompanyAccount_ New fee company account address
     function setFeeCompanyAccount(address feeCompanyAccount_) external onlyGovernor {
-        if (_feeCompanyAccount == feeCompanyAccount_)
-            revert InvalidAxiymFeeCompanyAccount();
+        if (
+            _feeCompanyAccount == feeCompanyAccount_ ||
+            feeCompanyAccount_ == address(0)
+        ) revert InvalidAxiymFeeCompanyAccount();
 
         address previous = _feeCompanyAccount;
         _feeCompanyAccount = feeCompanyAccount_;
@@ -228,14 +215,18 @@ contract OnTradeExchange is TradeExecutor, Pausable {
         onlyActiveCompanyAccount(companyAccount_)
         nonZerofeeAccount
     {
-        if (sellAssetQuoteAmount_ == 0) revert ZeroAmount();
-        if (axiymFee_ > sellAssetQuoteAmount_) revert FeesExceedValue();
+        if (_usedNonces[nonce_]) revert InvalidTradeNonce();
+        _usedNonces[nonce_] = true;
+
+        if (sellAssetQuoteAmount_ < _minTradeAmount) revert TradeBelowMinimum();
+        if (axiymFee_ > sellAssetQuoteAmount_ / 20) revert FeesExceedValue();
 
         // pull funds from company account and send fee to fee account
         _pullFundsAndApprove(
             companyAccount_,
             sellAssetQuoteAmount_,
             axiymFee_,
+            tradeBytes_,
             nonce_,
             signature_
         );
@@ -269,31 +260,22 @@ contract OnTradeExchange is TradeExecutor, Pausable {
     // 🟦 Trade Execution
     // ════════════════════════════════════════════════════════════════════════════
 
-    /// @notice Executes a single trade
-    /// @param tradeUint_ The trade ID
-    /// @param trade_ The trade struct from storage
-    /// @param amount_ The trade struct from storage
     function _executeTrade(
         uint256 tradeUint_,
         Trade storage trade_,
         uint256 amount_
     ) internal override whenNotPaused {
-        // if complete payment, we can remove from queue.
+        if (!_companyAccounts[trade_.companyAccount]) revert NotCompanyAccount();
+        if (
+            _companyAccountStatuses[trade_.companyAccount] !=
+            CompanyAccountStatus.Active
+        ) revert InvalidStatus();
+
         _updateQueue(tradeUint_, trade_, amount_);
 
-        // approve treasury to take offAsset
-        SafeERC20.forceApprove(_offAsset, _segregatedTreasury, amount_);
-
-        // execute trade in treasury (swap assets)
-        ISegregatedTreasury(_segregatedTreasury).executeTrade(tradeUint_, amount_);
-
-        // calculate fee for receipt (already paid but for reference)
         uint256 axiymFee = (amount_ * trade_.axiymFee) / trade_.initialPayoutSize;
-
-        // provide fee does not exist for on-ramp
         uint256 providerFee = 0;
 
-        // create trade payment recipt
         TradePaymentReceipt memory tradePayment = TradePaymentReceipt({
             clientPayout: amount_,
             axiymFee: axiymFee,
@@ -301,29 +283,32 @@ contract OnTradeExchange is TradeExecutor, Pausable {
             timestamp: block.timestamp
         });
 
+        // capture before _updateRegistry zeroes it on full payment
+        uint256 remainingPayout = trade_.currentPayoutSize;
+
         // update trade registry
         _updateRegistry(tradeUint_, tradePayment, amount_);
 
-        // ensure company account still exists and is active
-        if (!_companyAccounts[trade_.companyAccount]) revert NotCompanyAccount();
-        if (
-            _companyAccountStatuses[trade_.companyAccount] !=
-            CompanyAccountStatus.Active
-        ) revert InvalidStatus();
+        SafeERC20.forceApprove(_offAsset, _segregatedTreasury, amount_);
 
-        // safeTransfer onAsset payout to company account
+        ISegregatedTreasury(_segregatedTreasury).executeTrade(
+            tradeUint_,
+            amount_,
+            remainingPayout
+        );
+
         _onAsset.safeTransfer(trade_.companyAccount, amount_);
 
         emit TradePayment(
-            _tradesUintToBytes[tradeUint_], // trade ID (bytes32 form, external reference)
-            tradeUint_, // trade ID (uint form, internal reference)
-            trade_.companyAccount, // company account receiving the payout
-            address(_onAsset), // asset used for this payment
-            amount_, // gross amount processed for this payment
-            amount_, // net amount paid to the company (no fees deducted)
-            axiymFee, // Axiym fee charged for this payment slice (already paid elsewhere)
-            0, // provider fee (not applicable for on-trade)
-            block.timestamp // timestamp of execution
+            _tradesUintToBytes[tradeUint_],
+            tradeUint_,
+            trade_.companyAccount,
+            address(_onAsset),
+            amount_,
+            amount_,
+            axiymFee,
+            0,
+            block.timestamp
         );
     }
 
@@ -357,6 +342,7 @@ contract OnTradeExchange is TradeExecutor, Pausable {
         address companyAccount_,
         uint256 sellAssetQuoteAmount_,
         uint256 axiymFee_,
+        bytes16 tradeBytes_,
         bytes16 nonce_,
         bytes memory signature_
     ) internal {
@@ -368,6 +354,7 @@ contract OnTradeExchange is TradeExecutor, Pausable {
         ICompanyAccount(companyAccount_).approveSpender(
             address(_offAsset),
             sellAssetQuoteAmount_,
+            tradeBytes_,
             nonce_,
             signature_
         );
@@ -428,5 +415,11 @@ contract OnTradeExchange is TradeExecutor, Pausable {
     /// @return The treasury address
     function segregatedTreasury() external view returns (address) {
         return _segregatedTreasury;
+    }
+
+    /// @notice Returns the minimum trade amount in offAsset units
+    /// @return The minimum trade amount
+    function minTradeAmount() external view returns (uint256) {
+        return _minTradeAmount;
     }
 }

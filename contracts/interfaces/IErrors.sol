@@ -108,4 +108,9 @@ interface IErrors {
     error QueueAmountTotalZero();
     error InvalidFeeStructure();
     error FeesExceedValue();
+    error InvalidTradeNonce();
+    error InvalidGasThreshold();
+    error InvalidMaxTrades();
+    error AssetsIdentical();
+    error TradeBelowMinimum();
 }

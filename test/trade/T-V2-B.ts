@@ -21,7 +21,7 @@ import {
 } from "./helpers/helpers";
 import { TradeState } from "./enums/trade-status.enum";
 
-describe("T-V2-B: OnTradeExchange - Moving Trades in Queue", function () {
+describe("T-V2-B: OnTradeExchange - Moving Trades in Queue & getQueuedTrades", function () {
     let superAdmin: SignerWithAddress;
     let governor: SignerWithAddress;
     let manager: SignerWithAddress;
@@ -309,6 +309,101 @@ describe("T-V2-B: OnTradeExchange - Moving Trades in Queue", function () {
                 TradeState.Pending,
                 false // verbose
             );
+        });
+    });
+    describe("getQueuedTradesPaginated", function () {
+        beforeEach(async function () {
+            for (let i = 1; i <= 4; i++) {
+                await mintAndOnTradeAtTime(
+                    signer1,
+                    companyAccount1,
+                    BigNumber.from(100).mul(USD),
+                    BigNumber.from(0),
+                    i,
+                    protocol.IUSD,
+                    onTradeExchange,
+                    relay,
+                    timestampPrior + 86400 * i
+                );
+            }
+        });
+
+        context("success", function () {
+            it("should return first page correctly", async function () {
+                const [tradeIds, , nextId] =
+                    await onTradeExchange.getQueuedTradesPaginated(0, 2);
+
+                expect(tradeIds.length).to.equal(2);
+                expect(tradeIds[0]).to.equal(1);
+                expect(tradeIds[1]).to.equal(2);
+                expect(nextId).to.equal(3);
+            });
+
+            it("should return second page correctly", async function () {
+                const [tradeIds1, ,] =
+                    await onTradeExchange.getQueuedTradesPaginated(0, 2);
+
+                const lastIdOfPage1 = tradeIds1[tradeIds1.length - 1];
+
+                const [tradeIds, , nextId2] =
+                    await onTradeExchange.getQueuedTradesPaginated(lastIdOfPage1, 2);
+
+                expect(tradeIds.length).to.equal(2);
+                expect(tradeIds[0]).to.equal(3);
+                expect(tradeIds[1]).to.equal(4);
+                expect(nextId2).to.equal(0);
+            });
+
+            it("should return trimmed array when page size exceeds remaining trades", async function () {
+                const [tradeIds, , nextId] =
+                    await onTradeExchange.getQueuedTradesPaginated(0, 10);
+
+                expect(tradeIds.length).to.equal(4);
+                expect(nextId).to.equal(0);
+            });
+
+            it("should return empty arrays when queue is empty", async function () {
+                for (let i = 1; i <= 4; i++) {
+                    await onTradeExchange.connect(relay).cancelTrade(i);
+                }
+
+                const [tradeIds, , nextId] =
+                    await onTradeExchange.getQueuedTradesPaginated(0, 10);
+
+                expect(tradeIds.length).to.equal(0);
+                expect(nextId).to.equal(0);
+            });
+
+            it("should return 0 nextId when last page is exactly full", async function () {
+                const [tradeIds, , nextId] =
+                    await onTradeExchange.getQueuedTradesPaginated(0, 4);
+
+                expect(tradeIds.length).to.equal(4);
+                expect(nextId).to.equal(0);
+            });
+
+            it("should paginate through all trades correctly", async function () {
+                const allIds: number[] = [];
+                let startId = 0;
+                const pageSize = 2;
+
+                while (true) {
+                    const [tradeIds, , nextId] =
+                        await onTradeExchange.getQueuedTradesPaginated(
+                            startId,
+                            pageSize
+                        );
+
+                    for (const id of tradeIds) {
+                        allIds.push(id.toNumber());
+                    }
+
+                    if (nextId.eq(0)) break;
+                    startId = tradeIds[tradeIds.length - 1].toNumber();
+                }
+
+                expect(allIds).to.deep.equal([1, 2, 3, 4]);
+            });
         });
     });
 });

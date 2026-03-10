@@ -2,5 +2,11 @@
 pragma solidity 0.8.24;
 
 interface ICompanyAccount {
-    function approveSpender(address, uint256, bytes16, bytes memory) external;
+    function approveSpender(
+        address,
+        uint256,
+        bytes16,
+        bytes16,
+        bytes memory
+    ) external;
 }

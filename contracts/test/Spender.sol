@@ -16,12 +16,14 @@ contract Spender {
     function requestApprovalAndTransfer(
         address companyAccount_,
         uint256 amount_,
+        bytes16 tradeId_,
         bytes16 nonce_,
         bytes memory signature_
     ) external {
         ICompanyAccount(companyAccount_).approveSpender(
             _liquidityAsset,
             amount_,
+            tradeId_,
             nonce_,
             signature_
         );

@@ -8,9 +8,7 @@ export class OnTradeExchangeFactory {
         owner: string,
         authRegistryAddress: string,
         offAssetAddress: string,
-        onAssetAddress: string,
-        companyAccounts: string[] = [],
-        feecompanyAccountAddress: string
+        onAssetAddress: string
     ): Promise<OnTradeExchange> {
         const OnTradeExchange = await ethers.getContractFactory("OnTradeExchange");
 
@@ -19,9 +17,7 @@ export class OnTradeExchangeFactory {
             owner,
             authRegistryAddress,
             offAssetAddress,
-            onAssetAddress,
-            companyAccounts,
-            feecompanyAccountAddress
+            onAssetAddress
         );
         await onTradeExchange.deployed();
 

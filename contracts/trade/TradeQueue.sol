@@ -5,12 +5,13 @@ import {TradeRegistry} from "./TradeRegistry.sol";
 import {Trade} from "../trade/structs/Trade.sol";
 import {TradeState} from "../trade/enums/TradeState.sol";
 import {IAuthRegistry} from "../interfaces/IAuthRegistry.sol";
+import {Governable} from "../governance/Governable.sol";
 
 /// @title TradeQueue
 /// @notice Manages queue-specific operations and state for trades
-abstract contract TradeQueue is TradeRegistry {
+abstract contract TradeQueue is TradeRegistry, Governable {
     /// @notice Authorization registry
-    address internal immutable _authRegistry;
+    address internal _authRegistry;
 
     /// @notice Total amount currently in the queue
     uint256 internal _queueAmountTotal;
@@ -40,6 +41,10 @@ abstract contract TradeQueue is TradeRegistry {
         uint256 indexed targetId,
         bool direction
     );
+    event AuthRegistryTransferred(
+        address indexed oldAuthRegistry,
+        address indexed newAuthRegistry
+    );
 
     //--- Modifiers ---
     /// @notice Restricts function access to authorized addresses only
@@ -49,8 +54,23 @@ abstract contract TradeQueue is TradeRegistry {
         _;
     }
 
-    constructor(address authRegistry_) {
+    constructor(address governance_, address authRegistry_) Governable(governance_) {
         _authRegistry = authRegistry_;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // 🟦 Governance Functions
+    // ════════════════════════════════════════════════════════════════════════════
+    /// @notice Updates the AuthRegistry address
+    /// @param newAuthRegistry_ New AuthRegistry address
+    function setAuthRegistry(address newAuthRegistry_) external onlyGovernor {
+        if (newAuthRegistry_ == address(0)) revert AddressEmpty();
+        if (newAuthRegistry_ == _authRegistry) revert AddressExists();
+
+        address oldAuthRegistry = _authRegistry;
+        _authRegistry = newAuthRegistry_;
+
+        emit AuthRegistryTransferred(oldAuthRegistry, newAuthRegistry_);
     }
 
     // ════════════════════════════════════════════════════════════════════════════
@@ -162,12 +182,11 @@ abstract contract TradeQueue is TradeRegistry {
     ) internal {
         if (amount_ == trade_.currentPayoutSize) {
             _remove(tradeUint_);
+            _queueAmountTotal -= amount_;
+            emit TradeRemovedFromQueue(_tradesUintToBytes[tradeUint_], tradeUint_);
+        } else {
+            _queueAmountTotal -= amount_;
         }
-
-        // update queue state
-        _queueAmountTotal -= amount_;
-
-        emit TradeRemovedFromQueue(_tradesUintToBytes[tradeUint_], tradeUint_);
     }
 
     // ════════════════════════════════════════════════════════════════════════════
@@ -226,6 +245,44 @@ abstract contract TradeQueue is TradeRegistry {
             tradeIds[i] = current;
             trades[i] = getTradeData(current);
             (, current) = getNext(current);
+        }
+    }
+
+    /// @notice Returns a paginated list of queued trades
+    /// @dev Pass nextId as startId_ for subsequent pages. Returns trimmed arrays without assembly.
+    /// @param startId_ The trade ID to start from (0 for head)
+    /// @param pageSize_ The number of trades to return per page
+    /// @return tradeIds Array of trade IDs for this page
+    /// @return trades Array of trade structs for this page
+    /// @return nextId The next trade ID to use as startId_ for the next page (0 if end of queue)
+    function getQueuedTradesPaginated(
+        uint256 startId_,
+        uint256 pageSize_
+    )
+        external
+        view
+        returns (uint256[] memory tradeIds, Trade[] memory trades, uint256 nextId)
+    {
+        uint256[] memory tempIds = new uint256[](pageSize_);
+        Trade[] memory tempTrades = new Trade[](pageSize_);
+
+        (, uint256 current) = getNext(startId_);
+        uint256 count;
+
+        while (current != 0 && count < pageSize_) {
+            tempIds[count] = current;
+            tempTrades[count] = getTradeData(current);
+            (, current) = getNext(current);
+            count++;
+        }
+
+        nextId = current;
+
+        tradeIds = new uint256[](count);
+        trades = new Trade[](count);
+        for (uint256 i = 0; i < count; i++) {
+            tradeIds[i] = tempIds[i];
+            trades[i] = tempTrades[i];
         }
     }
 
