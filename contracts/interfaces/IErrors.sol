@@ -72,7 +72,6 @@ interface IErrors {
     error InvalidPayoutStatus();
     error TradeDoesNotExist();
 
-    error Initialized();
     error InitWindowExpired();
 
     // multi-sig safe errors
@@ -113,4 +112,5 @@ interface IErrors {
     error InvalidMaxTrades();
     error AssetsIdentical();
     error TradeBelowMinimum();
+    error CannotRemoveLastOwner();
 }

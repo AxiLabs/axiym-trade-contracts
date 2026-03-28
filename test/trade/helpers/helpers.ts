@@ -100,65 +100,6 @@ export async function checkTradeBook(
     }
 }
 
-export async function mintAndOnTradeAtTime(
-    signer: SignerWithAddress,
-    companyAccount: CompanyAccount,
-    amount: BigNumber,
-    fee: BigNumber,
-    nonceNum: number,
-    liquidityAsset: any,
-    exchangePool: OnTradeExchange,
-    relay: SignerWithAddress,
-    timestamp?: number
-) {
-    const total = amount.add(fee);
-
-    await liquidityAsset.connect(relay).mint(companyAccount.address, total);
-
-    if (timestamp !== undefined) {
-        await ethers.provider.send("evm_setNextBlockTimestamp", [timestamp]);
-    }
-
-    const tradeBytes = ethers.utils.randomBytes(16); // bytes16 trade ID
-    const nonceBytes = ethers.utils.hexZeroPad(ethers.utils.hexlify(nonceNum), 16); // bytes16 nonce
-
-    const chainId = (await ethers.provider.getNetwork()).chainId;
-
-    const messageHash = ethers.utils.solidityKeccak256(
-        [
-            "address",
-            "address",
-            "uint256",
-            "bytes16",
-            "bytes16",
-            "address",
-            "uint256",
-        ],
-        [
-            liquidityAsset.address, // liquidityAsset_
-            exchangePool.address, // target_ (the contract receiving the operation)
-            total, // amount_
-            tradeBytes, // id_ (trade ID)
-            nonceBytes, // nonce_
-            companyAccount.address, // address(this)
-            chainId, // chainId
-        ]
-    );
-
-    const signature = await signer.signMessage(ethers.utils.arrayify(messageHash));
-
-    await exchangePool
-        .connect(relay)
-        .onTrade(
-            companyAccount.address,
-            tradeBytes,
-            total,
-            fee,
-            nonceBytes,
-            signature
-        );
-}
-
 export async function checkTradeReceipt(
     tradeExchange: OnTradeExchange | OffTradeExchange,
     tradeId: BigNumber,
@@ -197,6 +138,62 @@ export async function checkTradeReceipt(
     expect(receipt.timestamp).to.eq(timestamp);
 }
 
+export async function mintAndOnTradeAtTime(
+    signer: SignerWithAddress,
+    companyAccount: CompanyAccount,
+    amount: BigNumber,
+    fee: BigNumber,
+    nonceNum: number,
+    liquidityAsset: any,
+    tradeExchange: OnTradeExchange,
+    relay: SignerWithAddress,
+    timestamp?: number
+) {
+    const total = amount.add(fee);
+    await liquidityAsset.connect(relay).mint(companyAccount.address, total);
+
+    if (timestamp !== undefined) {
+        await ethers.provider.send("evm_setNextBlockTimestamp", [timestamp]);
+    }
+    const tradeBytes = ethers.utils.randomBytes(16); // bytes16 trade ID
+    const nonceBytes = ethers.utils.hexZeroPad(ethers.utils.hexlify(nonceNum), 16); // bytes16 nonce
+
+    const chainId = (await ethers.provider.getNetwork()).chainId;
+
+    const messageHash = ethers.utils.solidityKeccak256(
+        [
+            "address",
+            "address",
+            "uint256",
+            "bytes16",
+            "bytes16",
+            "address",
+            "uint256",
+        ],
+        [
+            liquidityAsset.address, // liquidityAsset_
+            tradeExchange.address, // target_ (the contract receiving the operation)
+            total, // amount_
+            tradeBytes, // id_ (trade ID)
+            nonceBytes, // nonce_
+            companyAccount.address, // address(this)
+            chainId, // chainId
+        ]
+    );
+
+    const signature = await signer.signMessage(ethers.utils.arrayify(messageHash));
+    await tradeExchange
+        .connect(relay)
+        .onTrade(
+            companyAccount.address,
+            tradeBytes,
+            total,
+            fee,
+            nonceBytes,
+            signature
+        );
+}
+
 export async function mintAndOffTradeAtTime(
     signer: SignerWithAddress,
     companyAccount: CompanyAccount,
@@ -206,7 +203,7 @@ export async function mintAndOffTradeAtTime(
     totalFee: BigNumber,
     nonceNum: number,
     liquidityAsset: any,
-    offTradeExchange: any,
+    tradeExchange: OffTradeExchange,
     relay: SignerWithAddress,
     timestamp?: number
 ) {
@@ -217,22 +214,40 @@ export async function mintAndOffTradeAtTime(
     if (timestamp !== undefined) {
         await ethers.provider.send("evm_setNextBlockTimestamp", [timestamp]);
     }
-    const nonceBytes = ethers.utils.hexZeroPad(ethers.utils.hexlify(nonceNum), 16);
+
+    const tradeBytes = ethers.utils.randomBytes(16); // bytes16 trade ID
+    const nonceBytes = ethers.utils.hexZeroPad(ethers.utils.hexlify(nonceNum), 16); // bytes16 nonce
+
+    const chainId = (await ethers.provider.getNetwork()).chainId;
+
     const messageHash = ethers.utils.solidityKeccak256(
-        ["address", "address", "uint256", "bytes16"],
         [
-            liquidityAsset.address,
-            offTradeExchange.address,
-            sellAssetQuoteAmount,
-            nonceBytes,
+            "address",
+            "address",
+            "uint256",
+            "bytes16",
+            "bytes16",
+            "address",
+            "uint256",
+        ],
+        [
+            liquidityAsset.address, // liquidityAsset_
+            tradeExchange.address, // target_ (the contract receiving the operation)
+            sellAssetQuoteAmount, // amount_
+            tradeBytes, // id_ (trade ID)
+            nonceBytes, // nonce_
+            companyAccount.address, // address(this)
+            chainId, // chainId
         ]
     );
+
     const signature = await signer.signMessage(ethers.utils.arrayify(messageHash));
-    await offTradeExchange
+
+    await tradeExchange
         .connect(relay)
         .offTrade(
             companyAccount.address,
-            nonceBytes,
+            tradeBytes,
             sellAssetQuoteAmount,
             buyAssetQuoteValue,
             axiymFee,
@@ -258,12 +273,34 @@ export async function mintAndSettleAtTime(
     if (timestamp !== undefined) {
         await ethers.provider.send("evm_setNextBlockTimestamp", [timestamp]);
     }
+
     const nonceBytes = ethers.utils.hexZeroPad(ethers.utils.hexlify(nonceNum), 16);
+    const zeroId = ethers.utils.hexZeroPad("0x00", 16); // bytes16(0)
+    const chainId = (await ethers.provider.getNetwork()).chainId;
+
     const messageHash = ethers.utils.solidityKeccak256(
-        ["address", "address", "uint256", "bytes16"],
-        [liquidityAsset.address, offTradeExchange.address, amount, nonceBytes]
+        [
+            "address",
+            "address",
+            "uint256",
+            "bytes16",
+            "bytes16",
+            "address",
+            "uint256",
+        ],
+        [
+            liquidityAsset.address, // liquidityAsset_
+            offTradeExchange.address, // target_ (msg.sender in approveSpender)
+            amount, // amount_
+            zeroId, // id_ = bytes16(0)
+            nonceBytes, // nonce_
+            companyAccount.address, // address(this) in contract
+            chainId, // chainId
+        ]
     );
+
     const signature = await signer.signMessage(ethers.utils.arrayify(messageHash));
+
     await offTradeExchange
         .connect(relay)
         .settle(

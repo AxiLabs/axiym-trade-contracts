@@ -21,7 +21,7 @@ import {
 } from "./helpers/helpers";
 import { TradeState } from "./enums/trade-status.enum";
 
-describe("T-V2-G: OnTradeExchange - Cancelling Trades in Queue", function () {
+describe.only("T-V3-B: OnTradeExchange - Moving Trades in Queue", function () {
     let superAdmin: SignerWithAddress;
     let governor: SignerWithAddress;
     let manager: SignerWithAddress;
@@ -40,8 +40,9 @@ describe("T-V2-G: OnTradeExchange - Cancelling Trades in Queue", function () {
     let segregatedTreasury: SegregatedTreasury;
 
     let companyAccount1: CompanyAccount;
-    let axiymFeeCompanyAccount: CompanyAccount;
+    let feeCompanyAccount: CompanyAccount;
 
+    let debug = false;
     let timestampPrior: number;
 
     beforeEach(async function () {
@@ -78,7 +79,7 @@ describe("T-V2-G: OnTradeExchange - Cancelling Trades in Queue", function () {
             owner.address,
             protocol.IUSD.address,
             protocol.USDC.address,
-            [], // no company accounts
+            [], // no company accounys
             ethers.constants.AddressZero // zero axiym fee address
         );
 
@@ -88,7 +89,7 @@ describe("T-V2-G: OnTradeExchange - Cancelling Trades in Queue", function () {
 
         // create company account - on ramp
         companyAccount1 = await CompanyAccountFactory.create(
-            superAdmin, // deployer
+            relay, // deployer
             protocol.governance.address,
             protocol.authRegistry.address,
             signer1.address
@@ -105,8 +106,8 @@ describe("T-V2-G: OnTradeExchange - Cancelling Trades in Queue", function () {
         );
 
         // create axiym fee company account
-        axiymFeeCompanyAccount = await CompanyAccountFactory.create(
-            superAdmin, // deployer
+        feeCompanyAccount = await CompanyAccountFactory.create(
+            relay, // deployer
             protocol.governance.address,
             protocol.authRegistry.address,
             signer2.address
@@ -118,14 +119,14 @@ describe("T-V2-G: OnTradeExchange - Cancelling Trades in Queue", function () {
             .addCompanyAccount(companyAccount1.address);
         await onTradeExchange
             .connect(governor)
-            .setFeeCompanyAccount(axiymFeeCompanyAccount.address);
+            .setFeeCompanyAccount(feeCompanyAccount.address);
 
         const blockNumBefore = await ethers.provider.getBlockNumber();
         const blockBefore = await ethers.provider.getBlock(blockNumBefore);
         timestampPrior = blockBefore.timestamp;
     });
 
-    describe("Cancel Trade Uint", function () {
+    describe("Move Trade Uint", function () {
         beforeEach(async function () {
             await mintAndOnTradeAtTime(
                 signer1,
@@ -149,22 +150,17 @@ describe("T-V2-G: OnTradeExchange - Cancelling Trades in Queue", function () {
                 relay,
                 timestampPrior + 86400 * 2
             );
-
-            // cancel trade
-            await ethers.provider.send("evm_setNextBlockTimestamp", [
-                timestampPrior + 86400 * 3,
-            ]);
-            await onTradeExchange.connect(relay).cancelTrade(1); // move id 2, to where 1 is, and false = put it before
+            await onTradeExchange.connect(relay).move(2, 1, false); // move id 2, to where 1 is, and false = put it before
         });
         it("should have correct OnTradeExchange queue", async function () {
-            await checkTradeBook(onTradeExchange, [2], false); // head -> tail, 1
+            await checkTradeBook(onTradeExchange, [2, 1], false); // head -> tail, 1
         });
         it("should have correct OnTradeExchange stats", async function () {
             await checkOnTradeExchangeStats(
                 onTradeExchange,
                 protocol.IUSD, // off asset
                 protocol.USDC, // on asset
-                BigNumber.from(100).mul(USD), // total queued amount
+                BigNumber.from(200).mul(USD), // total queued amount
                 BigNumber.from(200).mul(USD), // total queued cumulative
                 BigNumber.from(200).mul(USD), // IUSD balance
                 BigNumber.from(0) // no USDT
@@ -188,14 +184,14 @@ describe("T-V2-G: OnTradeExchange - Cancelling Trades in Queue", function () {
                 BigNumber.from(0).mul(USD), // axiymFee
                 BigNumber.from(0).mul(USD), // totalFee
                 BigNumber.from(100).mul(USD), // initialpayoutSize
-                BigNumber.from(100).mul(USD), // currentpayoutSize
+                BigNumber.from(100).mul(USD), // initialpayoutSize
                 companyAccount1.address, // company account which made tx
                 protocol.IUSD.address, // sell asset address
                 protocol.USDC.address, // buy asset address
                 BigNumber.from(timestampPrior + 86400), // created at
                 BigNumber.from(0), // executed at
-                BigNumber.from(timestampPrior + 86400 * 3), // cancelled at
-                TradeState.Cancelled,
+                BigNumber.from(0), // cancelled at
+                TradeState.Pending,
                 false // verbose
             );
         });
@@ -220,7 +216,7 @@ describe("T-V2-G: OnTradeExchange - Cancelling Trades in Queue", function () {
             );
         });
     });
-    describe("Cancel Trade Bytes", function () {
+    describe("Move Trade Bytes", function () {
         beforeEach(async function () {
             await mintAndOnTradeAtTime(
                 signer1,
@@ -245,21 +241,21 @@ describe("T-V2-G: OnTradeExchange - Cancelling Trades in Queue", function () {
                 timestampPrior + 86400 * 2
             );
             const tradeBytes1 = await onTradeExchange.getTradeBytesFromUint(1);
+            const tradeBytes2 = await onTradeExchange.getTradeBytesFromUint(2);
 
-            await ethers.provider.send("evm_setNextBlockTimestamp", [
-                timestampPrior + 86400 * 3,
-            ]);
-            await onTradeExchange.connect(relay).cancelTradeBytes(tradeBytes1); // move id 2, to where 1 is, and false = put it before
+            await onTradeExchange
+                .connect(relay)
+                .moveBytes(tradeBytes2, tradeBytes1, false); // move id 2, to where 1 is, and false = put it before
         });
         it("should have correct OnTradeExchange queue", async function () {
-            await checkTradeBook(onTradeExchange, [2], false); // head -> tail, 1
+            await checkTradeBook(onTradeExchange, [2, 1], false); // head -> tail, 1
         });
         it("should have correct OnTradeExchange stats", async function () {
             await checkOnTradeExchangeStats(
                 onTradeExchange,
                 protocol.IUSD, // off asset
                 protocol.USDC, // on asset
-                BigNumber.from(100).mul(USD), // total queued amount
+                BigNumber.from(200).mul(USD), // total queued amount
                 BigNumber.from(200).mul(USD), // total queued cumulative
                 BigNumber.from(200).mul(USD), // IUSD balance
                 BigNumber.from(0) // no USDT
@@ -289,8 +285,8 @@ describe("T-V2-G: OnTradeExchange - Cancelling Trades in Queue", function () {
                 protocol.USDC.address, // buy asset address
                 BigNumber.from(timestampPrior + 86400), // created at
                 BigNumber.from(0), // executed at
-                BigNumber.from(timestampPrior + 86400 * 3), // cancelled at
-                TradeState.Cancelled,
+                BigNumber.from(0), // cancelled at
+                TradeState.Pending,
                 false // verbose
             );
         });

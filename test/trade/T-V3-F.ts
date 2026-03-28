@@ -25,7 +25,7 @@ import {
 } from "./helpers/helpers";
 import { TradeState } from "./enums/trade-status.enum";
 
-describe("T-V2-F: OnTradeExchange - Varying scenarios (partial execution, no pre-funding, no fees, manual execution)", function () {
+describe.only("T-V3-F: OnTradeExchange - Varying scenarios (partial execution, no pre-funding, no fees, manual execution)", function () {
     let superAdmin: SignerWithAddress;
     let governor: SignerWithAddress;
     let manager: SignerWithAddress;
@@ -92,7 +92,7 @@ describe("T-V2-F: OnTradeExchange - Varying scenarios (partial execution, no pre
 
         // create company account - on ramp
         companyAccount1 = await CompanyAccountFactory.create(
-            superAdmin, // deployer
+            relay, // deployer
             protocol.governance.address,
             protocol.authRegistry.address,
             signer1.address
@@ -110,7 +110,7 @@ describe("T-V2-F: OnTradeExchange - Varying scenarios (partial execution, no pre
 
         // create axiym fee company account
         axiymFeeCompanyAccount = await CompanyAccountFactory.create(
-            superAdmin, // deployer
+            relay, // deployer
             protocol.governance.address,
             protocol.authRegistry.address,
             signer2.address

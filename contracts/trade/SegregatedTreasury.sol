@@ -2,7 +2,7 @@
 pragma solidity 0.8.24;
 
 import {ContractVersion} from "../enums/ContractVersion.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeToken} from "../libraries/SafeToken.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IErrors} from "../interfaces/IErrors.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
@@ -21,7 +21,7 @@ contract SegregatedTreasury is
     IErrors,
     ISegregatedTreasury
 {
-    using SafeERC20 for IERC20;
+    using SafeToken for IERC20;
 
     ContractVersion public immutable version = ContractVersion.SegregatedTreasury;
 
@@ -37,7 +37,8 @@ contract SegregatedTreasury is
 
     // --- Mutable State ---
     /// @notice Owner of the treasury with admin privileges
-    address internal _owner;
+    mapping(address => bool) public _owners;
+    uint256 internal _ownerCount;
 
     /// @notice Address to receive withdrawn funds (controlled by owner)
     address internal _receiveAddress;
@@ -54,7 +55,7 @@ contract SegregatedTreasury is
     // --- Modifiers ---
     /// @notice Restricts function access to treasury owner only
     modifier onlyOwner() {
-        if (msg.sender != _owner) revert NotOwner();
+        if (!_owners[msg.sender]) revert NotOwner();
         _;
     }
 
@@ -80,7 +81,10 @@ contract SegregatedTreasury is
         if (owner_ == address(0)) revert AddressEmpty();
 
         _onTradeExchange = onTradeExchange_;
-        _owner = owner_;
+
+        _owners[owner_] = true;
+        _ownerCount = 1;
+
         _offAsset = IERC20(offAsset_);
         _onAsset = IERC20(onAsset_);
     }
@@ -107,14 +111,28 @@ contract SegregatedTreasury is
 
     /// @notice Updates the treasury owner
     /// @param owner_ Address of the new treasury owner
-    function setOwner(address owner_) external onlyOwner {
+    function addOwner(address owner_) external onlyOwner {
         if (owner_ == address(0)) revert AddressEmpty();
-        if (owner_ == _owner) revert OwnerExists();
+        if (_owners[owner_]) revert OwnerExists();
 
-        address previousOwner = _owner;
-        _owner = owner_;
+        _owners[owner_] = true;
+        _ownerCount++;
 
-        emit OwnerChanged(previousOwner, owner_);
+        emit OwnerChanged(address(0), owner_);
+    }
+
+    /// @notice Removes an existing treasury owner
+    /// @param owner_ Address of the owner to remove
+    function removeOwner(address owner_) external onlyOwner {
+        if (!_owners[owner_]) revert NotOwner();
+
+        // prevent removing last owner
+        if (_ownerCount == 1) revert CannotRemoveLastOwner();
+
+        _owners[owner_] = false;
+        _ownerCount--;
+
+        emit OwnerChanged(owner_, address(0));
     }
 
     /// @notice Sets the address where withdrawn funds are sent
@@ -193,10 +211,9 @@ contract SegregatedTreasury is
         return address(_onAsset);
     }
 
-    /// @notice Returns the current owner of the treasury
-    /// @return The owner address
-    function owner() external view returns (address) {
-        return _owner;
+    /// @notice Returns whether an address is a treasury owner
+    function isOwner(address account) external view returns (bool) {
+        return _owners[account];
     }
 
     /// @notice Returns the address where funds can be withdrawn to

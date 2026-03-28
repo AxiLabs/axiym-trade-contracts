@@ -14,6 +14,11 @@ dotenv.config();
 const config: any = {
     solidity: {
         version: "0.8.24",
+        gasReporter: {
+            currency: "USD",
+            gasPrice: 20,
+            enabled: true,
+        },
         settings: {
             evmVersion: "paris",
             optimizer: {
@@ -25,30 +30,12 @@ const config: any = {
     typechain: {
         outDir: "typechain",
         target: "ethers-v5",
-        //externalArtifacts: [
-        //  "./artifacts-safe/contracts/Safe.sol/Safe.json",
-        //  "./artifacts-safe/contracts/proxies/SafeProxy.sol/SafeProxy.json",
-        //  "./artifacts-safe/contracts/proxies/SafeProxyFactory.sol/SafeProxyFactory.json",
-        //],
     },
-    //external: {
-    //  contracts: [
-    //    {
-    //      artifacts: "node_modules/@safe-global/safe-contracts/artifacts",
-    //      version: "1.4.1-2",
-    //    },
-    //  ],
-    //},
     contractSizer: {
         alphaSort: true,
         disambiguatePaths: false,
         runOnCompile: false,
         strict: true,
-    },
-    gasReporter: {
-        currency: "USD",
-        gasPrice: 45,
-        enabled: false,
     },
     networks: {
         avalanche_fuji: {

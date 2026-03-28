@@ -21,7 +21,7 @@ import {
 } from "./helpers/helpers";
 import { TradeState } from "./enums/trade-status.enum";
 
-describe("T-V2-B: OnTradeExchange - Moving Trades in Queue & getQueuedTrades", function () {
+describe.only("T-V3-G: OnTradeExchange - Cancelling Trades in Queue", function () {
     let superAdmin: SignerWithAddress;
     let governor: SignerWithAddress;
     let manager: SignerWithAddress;
@@ -40,9 +40,8 @@ describe("T-V2-B: OnTradeExchange - Moving Trades in Queue & getQueuedTrades", f
     let segregatedTreasury: SegregatedTreasury;
 
     let companyAccount1: CompanyAccount;
-    let feeCompanyAccount: CompanyAccount;
+    let axiymFeeCompanyAccount: CompanyAccount;
 
-    let debug = false;
     let timestampPrior: number;
 
     beforeEach(async function () {
@@ -79,7 +78,7 @@ describe("T-V2-B: OnTradeExchange - Moving Trades in Queue & getQueuedTrades", f
             owner.address,
             protocol.IUSD.address,
             protocol.USDC.address,
-            [], // no company accounys
+            [], // no company accounts
             ethers.constants.AddressZero // zero axiym fee address
         );
 
@@ -89,7 +88,7 @@ describe("T-V2-B: OnTradeExchange - Moving Trades in Queue & getQueuedTrades", f
 
         // create company account - on ramp
         companyAccount1 = await CompanyAccountFactory.create(
-            superAdmin, // deployer
+            relay, // deployer
             protocol.governance.address,
             protocol.authRegistry.address,
             signer1.address
@@ -106,8 +105,8 @@ describe("T-V2-B: OnTradeExchange - Moving Trades in Queue & getQueuedTrades", f
         );
 
         // create axiym fee company account
-        feeCompanyAccount = await CompanyAccountFactory.create(
-            superAdmin, // deployer
+        axiymFeeCompanyAccount = await CompanyAccountFactory.create(
+            relay, // deployer
             protocol.governance.address,
             protocol.authRegistry.address,
             signer2.address
@@ -119,14 +118,14 @@ describe("T-V2-B: OnTradeExchange - Moving Trades in Queue & getQueuedTrades", f
             .addCompanyAccount(companyAccount1.address);
         await onTradeExchange
             .connect(governor)
-            .setFeeCompanyAccount(feeCompanyAccount.address);
+            .setFeeCompanyAccount(axiymFeeCompanyAccount.address);
 
         const blockNumBefore = await ethers.provider.getBlockNumber();
         const blockBefore = await ethers.provider.getBlock(blockNumBefore);
         timestampPrior = blockBefore.timestamp;
     });
 
-    describe("Move Trade Uint", function () {
+    describe("Cancel Trade Uint", function () {
         beforeEach(async function () {
             await mintAndOnTradeAtTime(
                 signer1,
@@ -150,17 +149,22 @@ describe("T-V2-B: OnTradeExchange - Moving Trades in Queue & getQueuedTrades", f
                 relay,
                 timestampPrior + 86400 * 2
             );
-            await onTradeExchange.connect(relay).move(2, 1, false); // move id 2, to where 1 is, and false = put it before
+
+            // cancel trade
+            await ethers.provider.send("evm_setNextBlockTimestamp", [
+                timestampPrior + 86400 * 3,
+            ]);
+            await onTradeExchange.connect(relay).cancelTrade(1); // move id 2, to where 1 is, and false = put it before
         });
         it("should have correct OnTradeExchange queue", async function () {
-            await checkTradeBook(onTradeExchange, [2, 1], false); // head -> tail, 1
+            await checkTradeBook(onTradeExchange, [2], false); // head -> tail, 1
         });
         it("should have correct OnTradeExchange stats", async function () {
             await checkOnTradeExchangeStats(
                 onTradeExchange,
                 protocol.IUSD, // off asset
                 protocol.USDC, // on asset
-                BigNumber.from(200).mul(USD), // total queued amount
+                BigNumber.from(100).mul(USD), // total queued amount
                 BigNumber.from(200).mul(USD), // total queued cumulative
                 BigNumber.from(200).mul(USD), // IUSD balance
                 BigNumber.from(0) // no USDT
@@ -184,14 +188,14 @@ describe("T-V2-B: OnTradeExchange - Moving Trades in Queue & getQueuedTrades", f
                 BigNumber.from(0).mul(USD), // axiymFee
                 BigNumber.from(0).mul(USD), // totalFee
                 BigNumber.from(100).mul(USD), // initialpayoutSize
-                BigNumber.from(100).mul(USD), // initialpayoutSize
+                BigNumber.from(100).mul(USD), // currentpayoutSize
                 companyAccount1.address, // company account which made tx
                 protocol.IUSD.address, // sell asset address
                 protocol.USDC.address, // buy asset address
                 BigNumber.from(timestampPrior + 86400), // created at
                 BigNumber.from(0), // executed at
-                BigNumber.from(0), // cancelled at
-                TradeState.Pending,
+                BigNumber.from(timestampPrior + 86400 * 3), // cancelled at
+                TradeState.Cancelled,
                 false // verbose
             );
         });
@@ -216,7 +220,7 @@ describe("T-V2-B: OnTradeExchange - Moving Trades in Queue & getQueuedTrades", f
             );
         });
     });
-    describe("Move Trade Bytes", function () {
+    describe("Cancel Trade Bytes", function () {
         beforeEach(async function () {
             await mintAndOnTradeAtTime(
                 signer1,
@@ -241,21 +245,21 @@ describe("T-V2-B: OnTradeExchange - Moving Trades in Queue & getQueuedTrades", f
                 timestampPrior + 86400 * 2
             );
             const tradeBytes1 = await onTradeExchange.getTradeBytesFromUint(1);
-            const tradeBytes2 = await onTradeExchange.getTradeBytesFromUint(2);
 
-            await onTradeExchange
-                .connect(relay)
-                .moveBytes(tradeBytes2, tradeBytes1, false); // move id 2, to where 1 is, and false = put it before
+            await ethers.provider.send("evm_setNextBlockTimestamp", [
+                timestampPrior + 86400 * 3,
+            ]);
+            await onTradeExchange.connect(relay).cancelTradeBytes(tradeBytes1); // move id 2, to where 1 is, and false = put it before
         });
         it("should have correct OnTradeExchange queue", async function () {
-            await checkTradeBook(onTradeExchange, [2, 1], false); // head -> tail, 1
+            await checkTradeBook(onTradeExchange, [2], false); // head -> tail, 1
         });
         it("should have correct OnTradeExchange stats", async function () {
             await checkOnTradeExchangeStats(
                 onTradeExchange,
                 protocol.IUSD, // off asset
                 protocol.USDC, // on asset
-                BigNumber.from(200).mul(USD), // total queued amount
+                BigNumber.from(100).mul(USD), // total queued amount
                 BigNumber.from(200).mul(USD), // total queued cumulative
                 BigNumber.from(200).mul(USD), // IUSD balance
                 BigNumber.from(0) // no USDT
@@ -285,8 +289,8 @@ describe("T-V2-B: OnTradeExchange - Moving Trades in Queue & getQueuedTrades", f
                 protocol.USDC.address, // buy asset address
                 BigNumber.from(timestampPrior + 86400), // created at
                 BigNumber.from(0), // executed at
-                BigNumber.from(0), // cancelled at
-                TradeState.Pending,
+                BigNumber.from(timestampPrior + 86400 * 3), // cancelled at
+                TradeState.Cancelled,
                 false // verbose
             );
         });
@@ -309,101 +313,6 @@ describe("T-V2-B: OnTradeExchange - Moving Trades in Queue & getQueuedTrades", f
                 TradeState.Pending,
                 false // verbose
             );
-        });
-    });
-    describe("getQueuedTradesPaginated", function () {
-        beforeEach(async function () {
-            for (let i = 1; i <= 4; i++) {
-                await mintAndOnTradeAtTime(
-                    signer1,
-                    companyAccount1,
-                    BigNumber.from(100).mul(USD),
-                    BigNumber.from(0),
-                    i,
-                    protocol.IUSD,
-                    onTradeExchange,
-                    relay,
-                    timestampPrior + 86400 * i
-                );
-            }
-        });
-
-        context("success", function () {
-            it("should return first page correctly", async function () {
-                const [tradeIds, , nextId] =
-                    await onTradeExchange.getQueuedTradesPaginated(0, 2);
-
-                expect(tradeIds.length).to.equal(2);
-                expect(tradeIds[0]).to.equal(1);
-                expect(tradeIds[1]).to.equal(2);
-                expect(nextId).to.equal(3);
-            });
-
-            it("should return second page correctly", async function () {
-                const [tradeIds1, ,] =
-                    await onTradeExchange.getQueuedTradesPaginated(0, 2);
-
-                const lastIdOfPage1 = tradeIds1[tradeIds1.length - 1];
-
-                const [tradeIds, , nextId2] =
-                    await onTradeExchange.getQueuedTradesPaginated(lastIdOfPage1, 2);
-
-                expect(tradeIds.length).to.equal(2);
-                expect(tradeIds[0]).to.equal(3);
-                expect(tradeIds[1]).to.equal(4);
-                expect(nextId2).to.equal(0);
-            });
-
-            it("should return trimmed array when page size exceeds remaining trades", async function () {
-                const [tradeIds, , nextId] =
-                    await onTradeExchange.getQueuedTradesPaginated(0, 10);
-
-                expect(tradeIds.length).to.equal(4);
-                expect(nextId).to.equal(0);
-            });
-
-            it("should return empty arrays when queue is empty", async function () {
-                for (let i = 1; i <= 4; i++) {
-                    await onTradeExchange.connect(relay).cancelTrade(i);
-                }
-
-                const [tradeIds, , nextId] =
-                    await onTradeExchange.getQueuedTradesPaginated(0, 10);
-
-                expect(tradeIds.length).to.equal(0);
-                expect(nextId).to.equal(0);
-            });
-
-            it("should return 0 nextId when last page is exactly full", async function () {
-                const [tradeIds, , nextId] =
-                    await onTradeExchange.getQueuedTradesPaginated(0, 4);
-
-                expect(tradeIds.length).to.equal(4);
-                expect(nextId).to.equal(0);
-            });
-
-            it("should paginate through all trades correctly", async function () {
-                const allIds: number[] = [];
-                let startId = 0;
-                const pageSize = 2;
-
-                while (true) {
-                    const [tradeIds, , nextId] =
-                        await onTradeExchange.getQueuedTradesPaginated(
-                            startId,
-                            pageSize
-                        );
-
-                    for (const id of tradeIds) {
-                        allIds.push(id.toNumber());
-                    }
-
-                    if (nextId.eq(0)) break;
-                    startId = tradeIds[tradeIds.length - 1].toNumber();
-                }
-
-                expect(allIds).to.deep.equal([1, 2, 3, 4]);
-            });
         });
     });
 });
