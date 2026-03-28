@@ -1,6 +1,5 @@
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { ethers } from "hardhat";
-import { expect } from "chai";
 import {
     CompanyAccount,
     OnTradeExchange,
@@ -24,7 +23,7 @@ import {
 } from "./helpers/helpers";
 import { TradeState } from "./enums/trade-status.enum";
 
-describe("T-V2-D: OnTradeExchange - Varying scenarios (with partial execution, with pre-funding, no fees, auto-execute)", function () {
+describe.only("T-V3-C: OnTradeExchange - Varying scenarios (no partial execution, with pre-funding, no fees, auto-execute)", function () {
     let superAdmin: SignerWithAddress;
     let governor: SignerWithAddress;
     let manager: SignerWithAddress;
@@ -91,7 +90,7 @@ describe("T-V2-D: OnTradeExchange - Varying scenarios (with partial execution, w
 
         // create company account - on ramp
         companyAccount1 = await CompanyAccountFactory.create(
-            superAdmin, // deployer
+            relay, // deployer
             protocol.governance.address,
             protocol.authRegistry.address,
             signer1.address
@@ -109,7 +108,7 @@ describe("T-V2-D: OnTradeExchange - Varying scenarios (with partial execution, w
 
         // create axiym fee company account
         axiymFeeCompanyAccount = await CompanyAccountFactory.create(
-            superAdmin, // deployer
+            relay, // deployer
             protocol.governance.address,
             protocol.authRegistry.address,
             signer2.address
@@ -126,8 +125,6 @@ describe("T-V2-D: OnTradeExchange - Varying scenarios (with partial execution, w
         const blockNumBefore = await ethers.provider.getBlockNumber();
         const blockBefore = await ethers.provider.getBlock(blockNumBefore);
         timestampPrior = blockBefore.timestamp;
-
-        await onTradeExchange.connect(governor).setPartialExecution(true);
     });
 
     describe("OnRamp Request (100), with Treasury Pre-funded (100)", function () {
@@ -140,7 +137,6 @@ describe("T-V2-D: OnTradeExchange - Varying scenarios (with partial execution, w
                 relay, // relay address
                 timestampPrior + 86400
             );
-
             // Day 1: mint and on-trade 100
             await mintAndOnTradeAtTime(
                 signer1,
@@ -154,11 +150,9 @@ describe("T-V2-D: OnTradeExchange - Varying scenarios (with partial execution, w
                 timestampPrior + 86400 * 2
             );
         });
-
         it("should have correct OnTradeExchange queue", async function () {
             await checkTradeBook(onTradeExchange, [], false); // head -> tail
         });
-
         it("should have correct OnTradeExchange stats", async function () {
             await checkOnTradeExchangeStats(
                 onTradeExchange,
@@ -170,7 +164,6 @@ describe("T-V2-D: OnTradeExchange - Varying scenarios (with partial execution, w
                 BigNumber.from(0) // no USDT
             );
         });
-
         it("should have correct SegregatedTreasury stats", async function () {
             await checkSegregatedTreasuryStats(
                 segregatedTreasury,
@@ -180,7 +173,6 @@ describe("T-V2-D: OnTradeExchange - Varying scenarios (with partial execution, w
                 BigNumber.from(0) // no USDT
             );
         });
-
         it("should have correct trade 1 stats", async function () {
             await checkTrade(
                 onTradeExchange, // trade pool contract
@@ -257,11 +249,9 @@ describe("T-V2-D: OnTradeExchange - Varying scenarios (with partial execution, w
                 timestampPrior + 86400 * 2
             );
         });
-
         it("should have correct OnTradeExchange queue", async function () {
             await checkTradeBook(onTradeExchange, [], false); // head -> tail
         });
-
         it("should have correct OnTradeExchange stats", async function () {
             await checkOnTradeExchangeStats(
                 onTradeExchange,
@@ -273,7 +263,6 @@ describe("T-V2-D: OnTradeExchange - Varying scenarios (with partial execution, w
                 BigNumber.from(0) // no USDT
             );
         });
-
         it("should have correct SegregatedTreasury stats", async function () {
             await checkSegregatedTreasuryStats(
                 segregatedTreasury,
@@ -287,7 +276,7 @@ describe("T-V2-D: OnTradeExchange - Varying scenarios (with partial execution, w
             await checkTrade(
                 onTradeExchange, // trade pool contract
                 BigNumber.from(1), // trade uint
-                BigNumber.from(60).mul(USD), // sell asset quote amount#
+                BigNumber.from(60).mul(USD), // sell asset quote amount
                 BigNumber.from(60).mul(USD), // buy asset quote amount
                 BigNumber.from(0).mul(USD), // axiymFee
                 BigNumber.from(0).mul(USD), // totalFee
@@ -369,9 +358,9 @@ describe("T-V2-D: OnTradeExchange - Varying scenarios (with partial execution, w
                 onTradeExchange,
                 protocol.IUSD, // off asset
                 protocol.USDC, // on asset
-                BigNumber.from(50).mul(USD), // total queued amount
+                BigNumber.from(150).mul(USD), // total queued amount
                 BigNumber.from(150).mul(USD), // total queued cumulative
-                BigNumber.from(50).mul(USD), // IUSD balance
+                BigNumber.from(150).mul(USD), // IUSD balance
                 BigNumber.from(0) // no USDT
             );
         });
@@ -381,8 +370,8 @@ describe("T-V2-D: OnTradeExchange - Varying scenarios (with partial execution, w
                 segregatedTreasury,
                 protocol.IUSD, // off asset
                 protocol.USDC, // on asset
-                BigNumber.from(100).mul(USD), // IUSD balance
-                BigNumber.from(0).mul(USD) // USDT balance
+                BigNumber.from(0).mul(USD), // IUSD balance
+                BigNumber.from(100).mul(USD) // USDT balance
             );
         });
 
@@ -395,7 +384,7 @@ describe("T-V2-D: OnTradeExchange - Varying scenarios (with partial execution, w
                 BigNumber.from(0).mul(USD), // axiymFee
                 BigNumber.from(0).mul(USD), // totalFee
                 BigNumber.from(150).mul(USD), // initialpayoutSize
-                BigNumber.from(50).mul(USD), // currentpayoutSize
+                BigNumber.from(150).mul(USD), // currentpayoutSize
                 companyAccount1.address, // company account which made tx
                 protocol.IUSD.address, // sell asset address
                 protocol.USDC.address, // buy asset address
@@ -406,24 +395,12 @@ describe("T-V2-D: OnTradeExchange - Varying scenarios (with partial execution, w
                 false // verbose
             );
         });
-        it("should have correct trade 1, payment receipt 1", async function () {
-            await checkTradeReceipt(
-                onTradeExchange, // trade pool contract
-                BigNumber.from(1), // trade uint
-                0, // receipt index
-                BigNumber.from(100).mul(USD), // payout size
-                BigNumber.from(0).mul(USD), // axiymFee associated wtih this payment
-                BigNumber.from(0).mul(USD), // totalFee associated with this payment
-                BigNumber.from(timestampPrior + 86400 * 2), // executed at (executed in same block)
-                false // verbose
-            );
-        });
         it("should have correct company account 1 balances", async function () {
             await checkCompanyAccount(
                 companyAccount1.address,
                 protocol.USDC,
                 protocol.IUSD,
-                BigNumber.from(100).mul(USD), // usdc balance
+                BigNumber.from(0).mul(USD), // usdc balance
                 BigNumber.from(0).mul(USD) // iusd balance
             );
         });

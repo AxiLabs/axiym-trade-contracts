@@ -10,8 +10,6 @@ interface ISegregatedTreasury {
 
     function unpause() external;
 
-    function setOwner(address) external;
-
     function setReceiveAddress(address) external;
 
     function executeTrade(uint256, uint256, uint256) external;
@@ -24,7 +22,7 @@ interface ISegregatedTreasury {
 
     function onAsset() external view returns (address);
 
-    function owner() external view returns (address);
+    function isOwner(address) external view returns (bool);
 
     function receiveAddress() external view returns (address);
 }

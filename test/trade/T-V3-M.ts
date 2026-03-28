@@ -19,7 +19,7 @@ import {
     mintAndOnTradeAtTime,
 } from "./helpers/helpers";
 
-describe("T-V2-M: OnTradeExchange – random partial repayments until cleared", function () {
+describe.only("T-V3-M: OnTradeExchange – random partial repayments until cleared", function () {
     let superAdmin: SignerWithAddress;
     let governor: SignerWithAddress;
     let manager: SignerWithAddress;
@@ -83,7 +83,7 @@ describe("T-V2-M: OnTradeExchange – random partial repayments until cleared", 
         segregatedTreasury = protocol.segregatedTreasuries[0];
 
         companyAccount1 = await CompanyAccountFactory.create(
-            superAdmin,
+            relay,
             protocol.governance.address,
             protocol.authRegistry.address,
             signer1.address
@@ -100,7 +100,7 @@ describe("T-V2-M: OnTradeExchange – random partial repayments until cleared", 
         );
 
         axiymFeeCompanyAccount = await CompanyAccountFactory.create(
-            superAdmin,
+            relay,
             protocol.governance.address,
             protocol.authRegistry.address,
             signer2.address

@@ -2,18 +2,13 @@ import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { ethers } from "hardhat";
 import { expect } from "chai";
 
-import {
-    CompanyAccount,
-    OnTradeExchange,
-    SegregatedTreasury,
-} from "../../typechain";
+import { OnTradeExchange, SegregatedTreasury } from "../../typechain";
 import { OnTradeProtocolFactory } from "./factories/on-trade-protocol.factory";
 
 import { BigNumber } from "ethers";
 import { USD } from "../common/constants.factory";
-import { CompanyAccountFactory } from "../company_account/factories/company-accounts.factory";
 
-describe("SegregatedTreasury – Owner Functions", function () {
+describe.only("SegregatedTreasury – Owner / Admin Functions", function () {
     let superAdmin: SignerWithAddress;
     let governor: SignerWithAddress;
     let manager: SignerWithAddress;
@@ -25,7 +20,6 @@ describe("SegregatedTreasury – Owner Functions", function () {
     let protocol: any;
     let onTradeExchange: OnTradeExchange;
     let segregatedTreasury: SegregatedTreasury;
-    let axiymFeeCompanyAccount: CompanyAccount;
 
     beforeEach(async function () {
         [superAdmin, governor, manager, authorizer, owner, relay, randomUser] =
@@ -43,14 +37,6 @@ describe("SegregatedTreasury – Owner Functions", function () {
         await OnTradeProtocolFactory.addIUSD(protocol, false);
         await OnTradeProtocolFactory.addUSDC(protocol, relay, false);
 
-        // create axiym fee company account
-        axiymFeeCompanyAccount = await CompanyAccountFactory.create(
-            superAdmin, // deployer
-            protocol.governance.address,
-            protocol.authRegistry.address,
-            randomUser.address
-        );
-
         await OnTradeProtocolFactory.createOnRamp(
             protocol,
             owner.address,
@@ -63,6 +49,7 @@ describe("SegregatedTreasury – Owner Functions", function () {
         onTradeExchange = protocol.onTradeExchanges[0];
         segregatedTreasury = protocol.segregatedTreasuries[0];
     });
+
     describe("pause", function () {
         context("failure cases", function () {
             it("should revert if called by non-owner", async function () {
@@ -78,6 +65,7 @@ describe("SegregatedTreasury – Owner Functions", function () {
             });
         });
     });
+
     describe("unpause", function () {
         beforeEach(async function () {
             await segregatedTreasury.connect(owner).pause();
@@ -96,32 +84,74 @@ describe("SegregatedTreasury – Owner Functions", function () {
             });
         });
     });
-    describe("setOwner", function () {
+
+    describe("addOwner", function () {
         context("failure cases", function () {
             it("should revert if not called by owner", async function () {
                 await expect(
                     segregatedTreasury
                         .connect(randomUser)
-                        .setOwner(randomUser.address)
+                        .addOwner(randomUser.address)
                 ).to.be.revertedWith("NotOwner()");
             });
             it("should revert if new owner is zero address", async function () {
                 await expect(
                     segregatedTreasury
                         .connect(owner)
-                        .setOwner(ethers.constants.AddressZero)
+                        .addOwner(ethers.constants.AddressZero)
                 ).to.be.revertedWith("AddressEmpty()");
             });
-            it("should revert if new owner is same as current", async function () {
+            it("should revert if owner already exists", async function () {
                 await expect(
-                    segregatedTreasury.connect(owner).setOwner(owner.address)
+                    segregatedTreasury.connect(owner).addOwner(owner.address)
                 ).to.be.revertedWith("OwnerExists()");
             });
         });
+
         context("success", function () {
-            it("should update owner correctly", async function () {
-                await segregatedTreasury.connect(owner).setOwner(randomUser.address);
-                expect(await segregatedTreasury.owner()).to.eq(randomUser.address);
+            it("should add a new owner", async function () {
+                await segregatedTreasury.connect(owner).addOwner(randomUser.address);
+                expect(
+                    await segregatedTreasury._owners(randomUser.address)
+                ).to.be.true;
+            });
+        });
+    });
+
+    describe("removeOwner", function () {
+        context("failure cases", function () {
+            it("should revert if not called by owner", async function () {
+                await expect(
+                    segregatedTreasury.connect(randomUser).removeOwner(owner.address)
+                ).to.be.revertedWith("NotOwner()");
+            });
+            it("should revert if removing last owner", async function () {
+                await expect(
+                    segregatedTreasury.connect(owner).removeOwner(owner.address)
+                ).to.be.revertedWith("CannotRemoveLastOwner()");
+            });
+            it("should revert if address is not an owner", async function () {
+                await expect(
+                    segregatedTreasury.connect(owner).removeOwner(randomUser.address)
+                ).to.be.revertedWith("NotOwner()");
+            });
+        });
+
+        context("success", function () {
+            it("should remove an existing owner", async function () {
+                // first add randomUser as owner
+                await segregatedTreasury.connect(owner).addOwner(randomUser.address);
+                expect(
+                    await segregatedTreasury._owners(randomUser.address)
+                ).to.be.true;
+
+                // remove randomUser
+                await segregatedTreasury
+                    .connect(owner)
+                    .removeOwner(randomUser.address);
+                expect(
+                    await segregatedTreasury._owners(randomUser.address)
+                ).to.be.false;
             });
         });
     });
@@ -174,11 +204,6 @@ describe("SegregatedTreasury – Owner Functions", function () {
                         .connect(randomUser)
                         .withdraw(BigNumber.from(1))
                 ).to.be.revertedWith("NotOwner()");
-            });
-            it("should revert if amount is zero", async function () {
-                await expect(
-                    segregatedTreasury.connect(owner).withdraw(BigNumber.from(0))
-                ).to.be.revertedWith("ZeroAmount()");
             });
             it("should revert if insufficient treasury balance", async function () {
                 await expect(

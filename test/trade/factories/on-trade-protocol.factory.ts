@@ -22,7 +22,6 @@ export class OnTradeProtocolFactory {
         protocol.manager = manager;
         protocol.authorizer = authorizer;
 
-        // --- create governance ---
         protocol.governance = await GovernanceFactory.create(
             superAdmin.address,
             governor.address,
@@ -31,13 +30,11 @@ export class OnTradeProtocolFactory {
         );
         verbose && console.log("governance created");
 
-        // -- create registries
         protocol.authRegistry = await AuthRegistryFactory.create(
             protocol.governance.address
         );
         verbose && console.log("auth registry created");
 
-        // -- add relay address to auth registry
         await protocol.authRegistry.connect(governor).addAuthAddress(relayAddress);
         verbose && console.log("relay addresses added to auth registry");
 
@@ -58,6 +55,20 @@ export class OnTradeProtocolFactory {
         verbose && console.log("USDC created");
     }
 
+    /// @notice Deploys TetherToken (exact Tron USDT replica) and mints initialSupply to relay
+    static async addTetherToken(
+        protocol: any,
+        relay: SignerWithAddress,
+        initialSupply: any,
+        verbose = false
+    ): Promise<void> {
+        const factory = await ethers.getContractFactory("TetherToken", relay);
+        protocol.USDT = await factory.deploy(initialSupply, "Tether USD", "USDT", 6);
+        await protocol.USDT.deployed();
+        verbose &&
+            console.log("TetherToken created, supply:", initialSupply.toString());
+    }
+
     static async createOnRamp(
         protocol: any,
         ownerAddress: string,
@@ -76,7 +87,6 @@ export class OnTradeProtocolFactory {
         );
         verbose && console.log("OnTradeExchange created");
 
-        // set fee company account if provided
         if (feeCompanyAccountAddress !== ethers.constants.AddressZero) {
             await onTradeExchange
                 .connect(protocol.governor)
@@ -84,7 +94,6 @@ export class OnTradeProtocolFactory {
             verbose && console.log("fee company account set");
         }
 
-        // add company accounts if provided
         for (const companyAccount of companyAccounts) {
             await onTradeExchange
                 .connect(protocol.authorizer)
@@ -92,18 +101,12 @@ export class OnTradeProtocolFactory {
             verbose && console.log(`company account ${companyAccount} added`);
         }
 
-        if (!protocol.onTradeExchanges) {
-            protocol.onTradeExchanges = [];
-        }
-
-        if (!protocol.segregatedTreasuries) {
-            protocol.segregatedTreasuries = [];
-        }
+        if (!protocol.onTradeExchanges) protocol.onTradeExchanges = [];
+        if (!protocol.segregatedTreasuries) protocol.segregatedTreasuries = [];
 
         protocol.onTradeExchanges.push(onTradeExchange);
 
         const segregatedTreasuryAddress = await onTradeExchange.segregatedTreasury();
-
         protocol.segregatedTreasuries.push(
             await SegregatedTreasuryFactory.attach(segregatedTreasuryAddress)
         );
