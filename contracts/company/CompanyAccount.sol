@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
 
-import {Governable} from "../governance/Governable.sol";
+import {GovernableInitializable} from "../governance/GovernableInitializable.sol";
 import {ContractVersion} from "../enums/ContractVersion.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IAuthRegistry} from "../interfaces/IAuthRegistry.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeToken} from "../libraries/SafeToken.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 
 /// @title CompanyAccount
 /// @notice Manages signers, liquidity assets, and receivers for a company account.
 /// Provides registry-style enumeration using counts and mappings.
-contract CompanyAccount is Governable, ReentrancyGuard {
-    using SafeERC20 for IERC20;
+contract CompanyAccount is GovernableInitializable, ReentrancyGuard {
+    using SafeToken for IERC20;
 
     /// @notice The contract version
     ContractVersion public immutable version = ContractVersion.CompanyAccount;
@@ -25,25 +26,25 @@ contract CompanyAccount is Governable, ReentrancyGuard {
     mapping(bytes16 => bool) private _nonces;
 
     // signer state variables
-    mapping(address => bool) internal _signers; // signer => bool
-    mapping(uint256 => address) internal _signerByIndex; // idx => signer
-    uint256 internal _signerCount; // count of signers
+    mapping(address => bool) internal _signers;
+    mapping(uint256 => address) internal _signerByIndex;
+    uint256 internal _signerCount;
 
     // receiver state variables
-    mapping(address => bool) internal _receivers; // receiver => bool
-    mapping(uint256 => address) internal _receiverByIndex; // idx => receiver
-    uint256 internal _receiverCount; // count of receivers
+    mapping(address => bool) internal _receivers;
+    mapping(uint256 => address) internal _receiverByIndex;
+    uint256 internal _receiverCount;
 
     // spenders state variables
-    mapping(address => mapping(address => bool)) internal _spenders; // liquidityAsset => spender => bool
-    mapping(address => mapping(uint256 => address)) internal _spenderByIndex; // liquidityAsset => idx => spender
-    mapping(address => mapping(address => uint256)) internal _spenderIndex; // liquidityAsset => spender => idx
-    mapping(address => uint256) internal _spenderCount; // count of spenders
+    mapping(address => mapping(address => bool)) internal _spenders;
+    mapping(address => mapping(uint256 => address)) internal _spenderByIndex;
+    mapping(address => mapping(address => uint256)) internal _spenderIndex;
+    mapping(address => uint256) internal _spenderCount;
 
     // liquidity asset state variables
-    mapping(uint256 => address) internal _liquidityAssetByIndex; // idx => liquidityAsset
-    mapping(address => bool) internal _liquidityAssetExists; // liquidityAsset => bool
-    uint256 internal _liquidityAssetCount; // total number of liquidityAssets
+    mapping(uint256 => address) internal _liquidityAssetByIndex;
+    mapping(address => bool) internal _liquidityAssetExists;
+    uint256 internal _liquidityAssetCount;
 
     // --- Events ---
     event Paused();
@@ -81,21 +82,30 @@ contract CompanyAccount is Governable, ReentrancyGuard {
         _;
     }
 
-    /// @notice Constructs the CompanyAccount contract
+    constructor() GovernableInitializable() {
+        _disableInitializers();
+    }
+
+    /// @notice Initializes the clone with governance, authRegistry and first signer
     /// @param governance_ The governance address
     /// @param authRegistry_ The address of the AuthRegistry contract
     /// @param signer_ The initial signer address
-    constructor(
+    function initialize(
         address governance_,
         address authRegistry_,
         address signer_
-    ) Governable(governance_) {
+    ) external initializer {
+        _initializeGovernable(governance_);
+
+        if (authRegistry_ == address(0)) revert AddressEmpty();
+        if (signer_ == address(0)) revert AddressEmpty();
+
         _authRegistry = authRegistry_;
 
-        if (signer_ == address(0)) revert AddressEmpty();
         _signers[signer_] = true;
         _signerByIndex[_signerCount] = signer_;
         _signerCount++;
+
         emit SignerAdded(signer_);
     }
 
@@ -118,6 +128,7 @@ contract CompanyAccount is Governable, ReentrancyGuard {
     // ════════════════════════════════════════════════════════════════════════════
     // 🟦 Governance Functions
     // ════════════════════════════════════════════════════════════════════════════
+
     /// @notice Updates the AuthRegistry address
     /// @param newAuthRegistry_ New AuthRegistry address
     function setAuthRegistry(address newAuthRegistry_) external onlyGovernor {
@@ -372,7 +383,7 @@ contract CompanyAccount is Governable, ReentrancyGuard {
             signature_
         );
 
-        SafeERC20.forceApprove(IERC20(liquidityAsset_), msg.sender, amount_);
+        IERC20(liquidityAsset_).safeForceApprove(msg.sender, amount_);
 
         emit SpenderApproved(liquidityAsset_, msg.sender, amount_);
     }

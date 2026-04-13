@@ -5,10 +5,15 @@ import {Governable} from "../governance/Governable.sol";
 import {CompanyAccount} from "../company/CompanyAccount.sol";
 import {ContractVersion} from "../enums/ContractVersion.sol";
 import {IAuthRegistry} from "../interfaces/IAuthRegistry.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 
 contract CompanyAccountFactory is Governable {
+    using Clones for address;
+
     ContractVersion public immutable version = ContractVersion.CompanyAccountFactory;
     address internal immutable _authRegistry;
+
+    address public immutable implementation;
 
     event CompanyAccountCreated(
         address indexed companyAccount,
@@ -17,19 +22,23 @@ contract CompanyAccountFactory is Governable {
 
     constructor(address governance_, address authRegistry_) Governable(governance_) {
         _authRegistry = authRegistry_;
+
+        implementation = address(new CompanyAccount());
     }
 
     function build(address signer_) external returns (address) {
         if (!IAuthRegistry(_authRegistry).isAuthAddress(msg.sender))
             revert Unauthorized();
 
-        CompanyAccount account = new CompanyAccount(
-            _governance,
-            _authRegistry,
-            signer_
-        );
+        address clone = implementation.clone();
 
-        emit CompanyAccountCreated(address(account), signer_);
-        return address(account);
+        CompanyAccount(clone).initialize(_governance, _authRegistry, signer_);
+
+        emit CompanyAccountCreated(address(clone), signer_);
+        return address(clone);
+    }
+
+    function authRegistry() external view returns (address) {
+        return _authRegistry;
     }
 }

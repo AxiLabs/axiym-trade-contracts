@@ -10,13 +10,13 @@ import {Trade} from "../trade/structs/Trade.sol";
 import {ISegregatedTreasury} from "./interfaces/ISegregatedTreasury.sol";
 import {SegregatedTreasury} from "./SegregatedTreasury.sol";
 import {TradePaymentReceipt} from "./structs/TradePaymentReceipt.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeToken} from "../libraries/SafeToken.sol";
 
 /// @title OnTradeExchange
 /// @notice Implements exchange functionality between an OnTradeExchange and a SegregatedTreasury
 /// @dev Orchestrates trade creation, fee collection, and company account management
 contract OnTradeExchange is TradeExecutor {
-    using SafeERC20 for IERC20;
+    using SafeToken for IERC20;
 
     ContractVersion public immutable version = ContractVersion.OnTradeExchange;
 
@@ -289,7 +289,7 @@ contract OnTradeExchange is TradeExecutor {
         // update trade registry
         _updateRegistry(tradeUint_, tradePayment, amount_);
 
-        SafeERC20.forceApprove(_offAsset, _segregatedTreasury, amount_);
+        _offAsset.safeForceApprove(_segregatedTreasury, amount_);
 
         ISegregatedTreasury(_segregatedTreasury).executeTrade(
             tradeUint_,
@@ -336,6 +336,7 @@ contract OnTradeExchange is TradeExecutor {
     /// @param companyAccount_ The company account address
     /// @param sellAssetQuoteAmount_ Amount of USDT to sell, this includes all fees.
     /// @param axiymFee_ Axiym fee charged on the trade, in USD.
+    /// @param tradeBytes_ TradeBytes
     /// @param nonce_ Nonce used for authorization signature
     /// @param signature_ Signature authorizing the spender
     function _pullFundsAndApprove(
@@ -367,7 +368,9 @@ contract OnTradeExchange is TradeExecutor {
         );
 
         // safeTransfer fee to Axiym fee account
-        _offAsset.safeTransfer(_feeCompanyAccount, axiymFee_);
+        if (axiymFee_ > 0) {
+            _offAsset.safeTransfer(_feeCompanyAccount, axiymFee_);
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════════════

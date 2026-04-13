@@ -18,14 +18,18 @@ enum ContractVersion {
     BorrowerAccountFactory,
     BorrowerAccount,
     MasterTreasuryRegistry,
-    CompanyAccount,
+    CompanyAccountV1,
     TradeRegistry,
     MasterTreasury,
     ExchangePool,
     Governor,
     CompanyAccountFactory,
-    OnTradeExchange,
-    OffTradeExchange,
+    OnTradeExchangeV2,
+    OffTradeExchangeV2,
     SegregatedTreasury,
-    SatoshiTest
+    SatoshiTest,
+    MultiSig,
+    CompanyAccount,
+    OnTradeExchange,
+    OffTradeExchange
 }
