@@ -8,20 +8,16 @@ const CONTRACT_NAME = "OnTradeExchange";
 const main = async () => {
     const artifact = loadArtifact(CONTRACT_NAME);
 
-    const outputPath = path.join(__dirname, `${CONTRACT_NAME}-bytecode.json`);
-    fs.writeFileSync(
-        outputPath,
-        JSON.stringify({ bytecode: artifact.bytecode }, null, 2)
-    );
+    // CRITICAL FIX: Use deployedBytecode (Runtime) instead of bytecode (Creation)
+    const runtimeBytecode = artifact.deployedBytecode
+        .replace(/^0x/, "")
+        .toLowerCase();
 
-    console.log("Contract:        ", CONTRACT_NAME);
-    console.log("Bytecode length: ", artifact.bytecode.length / 2 - 1, "bytes");
-    console.log("Saved to:        ", outputPath);
+    const outputPath = path.join(__dirname, `${CONTRACT_NAME}-runtime.json`);
+    fs.writeFileSync(outputPath, JSON.stringify({ runtimeBytecode }, null, 2));
+
+    console.log("Contract:", CONTRACT_NAME);
+    console.log("Runtime Bytecode length:", runtimeBytecode.length / 2, "bytes");
 };
 
-main()
-    .then(() => process.exit(0))
-    .catch((err) => {
-        console.error(err);
-        process.exit(1);
-    });
+main();
